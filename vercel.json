@@ -4,8 +4,12 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/",
+      "source": "/popup",
       "destination": "/popup.html"
+    },
+    {
+      "source": "/options",
+      "destination": "/options.html"
     }
   ]
 }
