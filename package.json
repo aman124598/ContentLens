@@ -1,0 +1,25 @@
+{
+  "name": "contentlens",
+  "version": "1.0.0",
+  "description": "AI Reply Filtering Chrome Extension",
+  "private": true,
+  "scripts": {
+    "dev": "vite build --watch & vite build --config vite.content.config.ts --watch",
+    "build": "vite build && vite build --config vite.content.config.ts",
+    "lint": "eslint src --ext .ts",
+    "generate-icons": "node scripts/generate-icons.js"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.260",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12",
+    "vite-plugin-copy": "^0.1.6"
+  },
+  "dependencies": {
+    "lodash-es": "^4.17.21",
+    "@types/lodash-es": "^4.17.12"
+  }
+}

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ContentLens – Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+
+<body>
+  <div class="page">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <span>🔍</span>
+        <div>
+          <div class="sidebar__name">ContentLens</div>
+          <div class="sidebar__sub">AI Reply Filter</div>
+        </div>
+      </div>
+      <nav class="sidebar__nav">
+        <a href="#general" class="nav-item nav-item--active">⚙ General</a>
+        <a href="#domains" class="nav-item">🌐 Domains</a>
+        <a href="#privacy" class="nav-item">🔒 Privacy</a>
+        <a href="#about" class="nav-item">ℹ About</a>
+      </nav>
+    </aside>
+
+    <main class="content">
+
+      <div id="saveBanner" class="save-banner hidden">Settings saved ✓</div>
+
+      <section id="general" class="card">
+        <h2 class="card__title">General</h2>
+
+        <div class="field">
+          <label class="field__label" for="defaultThreshold">
+            Default Detection Threshold
+            <span class="badge" id="thresholdDisplay">7</span>
+          </label>
+          <input type="range" id="defaultThreshold" min="1" max="10" step="1" value="7" class="slider" />
+          <p class="field__hint">
+            Content scoring <strong>≥</strong> this value will be filtered. Lower = more aggressive filtering.
+          </p>
+          <div class="score-guide">
+            <div class="score-guide__item score-guide__item--green">1–3 · Human-like</div>
+            <div class="score-guide__item score-guide__item--amber">4–6 · Ambiguous</div>
+            <div class="score-guide__item score-guide__item--red">7–10 · AI-like</div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label">Default Filter Mode</label>
+          <div class="mode-list">
+            <label class="mode-option">
+              <input type="radio" name="defaultMode" value="blur" />
+              <span class="mode-option__inner">
+                <strong>Blur</strong> — blurs suspected AI content. Hover to reveal.
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="defaultMode" value="hide" />
+              <span class="mode-option__inner">
+                <strong>Hide</strong> — removes flagged content from view entirely.
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="defaultMode" value="highlight" />
+              <span class="mode-option__inner">
+                <strong>Highlight</strong> — marks content with a red outline (non-intrusive).
+              </span>
+            </label>
+            <label class="mode-option">
+              <input type="radio" name="defaultMode" value="badge" />
+              <span class="mode-option__inner">
+                <strong>Badge</strong> — shows a score badge only. Content is unmodified.
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="minLength">
+            Minimum Text Length
+            <span class="badge badge--gray" id="minLengthDisplay">80</span> chars
+          </label>
+          <input type="range" id="minLength" min="20" max="500" step="10" value="80" class="slider" />
+          <p class="field__hint">Text blocks shorter than this will be skipped.</p>
+        </div>
+      </section>
+
+      <section id="domains" class="card">
+        <h2 class="card__title">Domain Rules</h2>
+        <p class="card__desc">
+          Disable ContentLens on specific websites (e.g., banking, healthcare, internal tools).
+        </p>
+
+        <div class="field">
+          <div class="add-domain-row">
+            <input type="text" id="domainInput" class="text-input" placeholder="example.com" />
+            <button id="addDomainBtn" class="btn btn--primary">Add</button>
+          </div>
+          <p class="field__hint">Enter a hostname to disable ContentLens on.</p>
+        </div>
+
+        <div id="domainList" class="domain-list">
+          <p class="empty-state">No disabled domains yet.</p>
+        </div>
+      </section>
+
+      <section id="privacy" class="card">
+        <h2 class="card__title">Privacy</h2>
+
+        <div class="info-box">
+          <p><strong>ContentLens is 100% local.</strong></p>
+          <ul>
+            <li>All scoring is done on-device using heuristics.</li>
+            <li>No page content is ever sent to a server.</li>
+            <li>Only text hashes and scores are stored (no raw text).</li>
+            <li>No user identity or browsing history is collected.</li>
+          </ul>
+        </div>
+
+        <div class="field">
+          <label class="field__label">Cache Management</label>
+          <div class="cache-row">
+            <span class="cache-stat">Cached scores: <strong id="cacheCount">—</strong></span>
+            <button id="clearCacheBtn" class="btn btn--danger-outline">Clear Cache</button>
+          </div>
+          <p class="field__hint">Clearing the cache will cause all pages to be re-scored on next visit.</p>
+        </div>
+      </section>
+
+      <section id="about" class="card">
+        <h2 class="card__title">About ContentLens</h2>
+        <div class="about-block">
+          <p>
+            <strong>ContentLens</strong> estimates the likelihood that text content on web pages
+            was generated by an AI system. It uses local statistical heuristics — no internet
+            connection required.
+          </p>
+          <p class="disclaimer">
+            ⚠ Scores represent <em>probabilistic similarity</em>, not proof of AI origin.
+            ContentLens does not claim definitive AI detection. Always use your own judgment.
+          </p>
+          <div class="about-meta">
+            <span>Version 1.0.0</span>
+            <span>Manifest V3</span>
+            <span>Local-only scoring</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="footer">
+        <button id="saveBtn" class="btn btn--primary btn--lg">Save Settings</button>
+        <button id="resetBtn" class="btn btn--ghost">Reset to Defaults</button>
+      </div>
+
+    </main>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+
+</html>

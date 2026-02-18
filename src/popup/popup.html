@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ContentLens</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+
+<body>
+  <div class="popup">
+    <!-- Header -->
+    <header class="header">
+      <div class="header__brand">
+        <span class="header__icon">🔍</span>
+        <div class="header__titles">
+          <h1 class="header__name">ContentLens</h1>
+          <p class="header__tagline">AI Reply Filter</p>
+        </div>
+      </div>
+      <label class="toggle" title="Enable / Disable ContentLens">
+        <input type="checkbox" id="masterToggle" />
+        <span class="toggle__track">
+          <span class="toggle__thumb"></span>
+        </span>
+      </label>
+    </header>
+
+    <!-- Divider -->
+    <div class="divider"></div>
+
+    <!-- Body — disabled state overlay -->
+    <div id="controls" class="controls">
+
+      <!-- Threshold -->
+      <section class="section">
+        <label class="section__label" for="threshold">
+          Detection Threshold
+          <span class="badge" id="thresholdValue">7</span>
+        </label>
+        <input type="range" id="threshold" min="1" max="10" step="1" value="7" class="slider" />
+        <div class="slider__labels">
+          <span>1 – More filtering</span>
+          <span>10 – Less filtering</span>
+        </div>
+      </section>
+
+      <!-- Mode -->
+      <section class="section">
+        <p class="section__label">Filter Mode</p>
+        <div class="mode-grid">
+          <label class="mode-btn">
+            <input type="radio" name="mode" value="blur" />
+            <span class="mode-btn__inner">
+              <span class="mode-btn__icon">👁</span>
+              <span class="mode-btn__text">Blur</span>
+            </span>
+          </label>
+          <label class="mode-btn">
+            <input type="radio" name="mode" value="hide" />
+            <span class="mode-btn__inner">
+              <span class="mode-btn__icon">🚫</span>
+              <span class="mode-btn__text">Hide</span>
+            </span>
+          </label>
+          <label class="mode-btn">
+            <input type="radio" name="mode" value="highlight" />
+            <span class="mode-btn__inner">
+              <span class="mode-btn__icon">🔴</span>
+              <span class="mode-btn__text">Highlight</span>
+            </span>
+          </label>
+          <label class="mode-btn">
+            <input type="radio" name="mode" value="badge" />
+            <span class="mode-btn__inner">
+              <span class="mode-btn__icon">🏷</span>
+              <span class="mode-btn__text">Badge</span>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Domain rule for current site -->
+      <section class="section section--domain">
+        <div class="domain-row">
+          <div class="domain-info">
+            <span class="domain-info__icon">🌐</span>
+            <span class="domain-info__host" id="currentHost">—</span>
+          </div>
+          <label class="toggle toggle--sm" title="Toggle scanning on this site">
+            <input type="checkbox" id="domainToggle" checked />
+            <span class="toggle__track">
+              <span class="toggle__thumb"></span>
+            </span>
+          </label>
+        </div>
+        <p class="domain-hint">Enable/disable ContentLens on this site</p>
+      </section>
+
+      <!-- Stats row -->
+      <div class="stats-row">
+        <span class="stat">
+          <span class="stat__icon">📦</span>
+          <span id="cacheCount">0</span> cached
+        </span>
+        <button class="link-btn" id="openOptions">⚙ Settings</button>
+      </div>
+
+    </div>
+
+    <!-- Disabled overlay message -->
+    <div id="disabledMsg" class="disabled-msg hidden">
+      <span>ContentLens is <strong>off</strong></span>
+      <p>Toggle the switch above to re-enable.</p>
+    </div>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+
+</html>
