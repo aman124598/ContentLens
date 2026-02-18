@@ -133,7 +133,7 @@ licenseActivateBtn.addEventListener('click', async () => {
       await renderLicenseUI();
       // Trigger re-scan in active tab
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'RE_EVALUATE' } as ExtensionMessage).catch(() => {});
+      if (tab?.id) chrome.tabs.sendMessage(tab.id, { type: 'RE_EVALUATE' } as ExtensionMessage).catch(() => { });
     } else {
       showLicenseError(res?.error ?? 'Activation failed. Please check your key.');
     }

@@ -378,7 +378,9 @@ body {
   flex-shrink: 0;
 }
 
-.license-bar__cta:hover { background: #4f46e5; }
+.license-bar__cta:hover {
+  background: #4f46e5;
+}
 
 /* ── License activation panel ──────────────────────────────────────────────── */
 .license-panel {
@@ -421,7 +423,9 @@ body {
   min-width: 0;
 }
 
-.license-input:focus { border-color: var(--primary); }
+.license-input:focus {
+  border-color: var(--primary);
+}
 
 .license-activate-btn {
   background: var(--primary);
@@ -435,8 +439,14 @@ body {
   white-space: nowrap;
 }
 
-.license-activate-btn:hover { background: #4f46e5; }
-.license-activate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.license-activate-btn:hover {
+  background: #4f46e5;
+}
+
+.license-activate-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
 .license-error {
   font-size: 11px;
@@ -460,4 +470,6 @@ body {
   padding-top: 2px;
 }
 
-.license-buy-btn:hover { text-decoration: underline; }
+.license-buy-btn:hover {
+  text-decoration: underline;
+}
