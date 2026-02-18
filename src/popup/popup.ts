@@ -2,7 +2,7 @@
 // Popup UI logic
 
 import './popup.css';
-import { ExtensionSettings, FilterMode, ExtensionMessage, LicenseState, LicenseStatus, LS_CHECKOUT_URL, TRIAL_MS, TRIAL_DAYS } from '../shared/types';
+import { ExtensionSettings, FilterMode, ExtensionMessage, LicenseState, LicenseStatus, AuthSession, DODO_PAYMENT_LINK, TRIAL_DAYS } from '../shared/types';
 import { trialCountdown } from '../shared/license';
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
@@ -12,11 +12,30 @@ const thresholdSlider = document.getElementById('threshold') as HTMLInputElement
 const thresholdValue = document.getElementById('thresholdValue')!;
 const modeRadios = document.querySelectorAll<HTMLInputElement>('input[name="mode"]');
 const domainToggle = document.getElementById('domainToggle') as HTMLInputElement;
+const allowlistToggle = document.getElementById('allowlistToggle') as HTMLInputElement;
+const allowlistSub = document.getElementById('allowlistSub')!;
+const domainHint = document.getElementById('domainHint')!;
+const enabledSitesList = document.getElementById('enabledSitesList')!;
+const enabledSitesUl = document.getElementById('enabledSitesUl')!;
 const currentHostEl = document.getElementById('currentHost')!;
 const cacheCountEl = document.getElementById('cacheCount')!;
 const openOptionsBtn = document.getElementById('openOptions')!;
 const controls = document.getElementById('controls')!;
 const disabledMsg = document.getElementById('disabledMsg')!;
+
+// Auth wall
+const authWall = document.getElementById('authWall')!;
+const authTabLogin = document.getElementById('authTabLogin') as HTMLButtonElement;
+const authTabSignup = document.getElementById('authTabSignup') as HTMLButtonElement;
+const authEmail = document.getElementById('authEmail') as HTMLInputElement;
+const authPassword = document.getElementById('authPassword') as HTMLInputElement;
+const authConfirmHint = document.getElementById('authConfirmHint')!;
+const authSubmitBtn = document.getElementById('authSubmitBtn') as HTMLButtonElement;
+const authError = document.getElementById('authError')!;
+const authSuccess = document.getElementById('authSuccess')!;
+
+// Main popup wrapper (everything except authWall)
+const popup = document.querySelector('.popup') as HTMLElement;;
 
 // License UI
 const licenseBar = document.getElementById('licenseBar')!;
@@ -35,10 +54,130 @@ const licenseBuyBtn = document.getElementById('licenseBuyBtn') as HTMLAnchorElem
 
 let settings: ExtensionSettings;
 let currentHost = '';
+let authMode: 'login' | 'signup' = 'login';
+let authSession: AuthSession | null = null;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
+  // ── Step 1: Check authentication ───────────────────────────────────────────
+  authSession = await fetchAuthSession();
+
+  if (!authSession) {
+    // Not signed in — show auth wall, hide main UI
+    showAuthWall();
+    return;
+  }
+
+  // ── Step 2: Signed in — show main UI ───────────────────────────────────────
+  hideAuthWall();
+  await initMainUI();
+}
+
+function fetchAuthSession(): Promise<AuthSession | null> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'AUTH_GET_SESSION' } as ExtensionMessage, (res) => {
+      if (chrome.runtime.lastError || !res) { resolve(null); return; }
+      resolve(res.session ?? null);
+    });
+  });
+}
+
+// ─── Auth wall show/hide ──────────────────────────────────────────────────────
+
+function showAuthWall() {
+  authWall.classList.remove('hidden');
+  // Hide entire popup contents except the auth wall
+  Array.from(popup.children).forEach((el) => {
+    if (el !== authWall) (el as HTMLElement).style.display = 'none';
+  });
+}
+
+function hideAuthWall() {
+  authWall.classList.add('hidden');
+  Array.from(popup.children).forEach((el) => {
+    if (el !== authWall) (el as HTMLElement).style.removeProperty('display');
+  });
+}
+
+// ─── Auth tab switching ───────────────────────────────────────────────────────
+
+authTabLogin.addEventListener('click', () => {
+  authMode = 'login';
+  authTabLogin.classList.add('active');
+  authTabSignup.classList.remove('active');
+  authSubmitBtn.textContent = 'Sign In';
+  authConfirmHint.classList.add('hidden');
+  authError.classList.add('hidden');
+  authSuccess.classList.add('hidden');
+});
+
+authTabSignup.addEventListener('click', () => {
+  authMode = 'signup';
+  authTabSignup.classList.add('active');
+  authTabLogin.classList.remove('active');
+  authSubmitBtn.textContent = 'Create Account';
+  authConfirmHint.classList.remove('hidden');
+  authError.classList.add('hidden');
+  authSuccess.classList.add('hidden');
+});
+
+// ─── Auth form submit ─────────────────────────────────────────────────────────
+
+authSubmitBtn.addEventListener('click', async () => {
+  const email = authEmail.value.trim();
+  const password = authPassword.value;
+
+  if (!email || !password) {
+    showAuthError('Please enter your email and password.');
+    return;
+  }
+  if (authMode === 'signup' && password.length < 6) {
+    showAuthError('Password must be at least 6 characters.');
+    return;
+  }
+
+  authSubmitBtn.disabled = true;
+  authSubmitBtn.textContent = authMode === 'login' ? 'Signing in…' : 'Creating account…';
+  authError.classList.add('hidden');
+  authSuccess.classList.add('hidden');
+
+  const msgType = authMode === 'login' ? 'AUTH_SIGN_IN' : 'AUTH_SIGN_UP';
+  chrome.runtime.sendMessage({ type: msgType, email, password } as ExtensionMessage, async (res) => {
+    authSubmitBtn.disabled = false;
+    authSubmitBtn.textContent = authMode === 'login' ? 'Sign In' : 'Create Account';
+
+    if (!res?.ok) {
+      showAuthError(res?.error ?? 'Authentication failed. Please try again.');
+      return;
+    }
+
+    if (authMode === 'signup') {
+      // Supabase sends confirmation email — inform user
+      authSuccess.textContent = '✅ Account created! Check your email to confirm, then sign in.';
+      authSuccess.classList.remove('hidden');
+      // Switch to login tab
+      authTabLogin.click();
+      return;
+    }
+
+    // Signed in — reload the popup
+    authSession = res.session ?? null;
+    if (authSession) {
+      hideAuthWall();
+      await initMainUI();
+    }
+  });
+});
+
+function showAuthError(msg: string) {
+  authError.textContent = msg;
+  authError.classList.remove('hidden');
+}
+
+// ─── Main UI init (after auth confirmed) ─────────────────────────────────────
+
+async function initMainUI() {
   // Fetch current tab hostname
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentHost = tab?.url ? new URL(tab.url).hostname : '';
@@ -81,16 +220,18 @@ async function renderLicenseUI() {
   const { state, status } = await fetchLicense();
 
   // Set buy button URL
-  licenseBuyBtn.href = LS_CHECKOUT_URL;
-  licenseUpgradeBtn.href = LS_CHECKOUT_URL;
+  licenseBuyBtn.href = DODO_PAYMENT_LINK;
+  licenseUpgradeBtn.href = DODO_PAYMENT_LINK;
 
   licenseBar.classList.remove('hidden', 'license-bar--expired');
 
   if (status === 'active' || status === 'grace') {
     // Paid user — show compact green confirmation, hide panel
-    licenseBar.innerHTML = `✅ <strong>Licensed</strong>${state.licenseEmail ? ` · ${state.licenseEmail}` : ''} &nbsp;<button id="deactivateBtn" style="background:none;border:none;color:#6b7280;font-size:10px;cursor:pointer;text-decoration:underline;">Remove</button>`;
+    const emailLabel = state.licenseEmail ?? authSession?.email ?? '';
+    licenseBar.innerHTML = `✅ <strong>Licensed</strong>${emailLabel ? ` · ${emailLabel}` : ''} &nbsp;<button id="deactivateBtn" style="background:none;border:none;color:#6b7280;font-size:10px;cursor:pointer;text-decoration:underline;">Remove</button> <button id="signOutBtn" style="background:none;border:none;color:#6b7280;font-size:10px;cursor:pointer;text-decoration:underline;margin-left:4px;">Sign out</button>`;
     licensePanel.classList.add('hidden');
     document.getElementById('deactivateBtn')?.addEventListener('click', deactivateLicense);
+    document.getElementById('signOutBtn')?.addEventListener('click', handleSignOut);
   } else if (status === 'trial') {
     const countdown = trialCountdown(state);
     licenseBarText.textContent = `🎁 Free trial: ${countdown}`;
@@ -146,6 +287,13 @@ async function deactivateLicense() {
   });
 }
 
+async function handleSignOut() {
+  chrome.runtime.sendMessage({ type: 'AUTH_SIGN_OUT' } as ExtensionMessage, () => {
+    authSession = null;
+    showAuthWall();
+  });
+}
+
 function showLicenseError(msg: string) {
   licenseError.textContent = msg;
   licenseError.classList.remove('hidden');
@@ -163,10 +311,60 @@ function renderUI(s: ExtensionSettings) {
     radio.checked = radio.value === s.mode;
   });
 
-  const domainRule = s.domainRules[currentHost];
-  domainToggle.checked = domainRule !== 'disabled';
+  // Allowlist mode toggle
+  allowlistToggle.checked = !!s.siteAllowlistMode;
+  renderAllowlistUI(s);
 
   setControlsEnabled(s.enabled);
+}
+
+function renderAllowlistUI(s: ExtensionSettings) {
+  const isAllowlist = !!s.siteAllowlistMode;
+
+  if (isAllowlist) {
+    allowlistSub.textContent = 'Only enabled sites';
+    domainHint.textContent = domainToggle.checked
+      ? 'ContentLens is ON for this site'
+      : 'ContentLens is OFF for this site';
+  } else {
+    allowlistSub.textContent = 'Works on all sites';
+    domainHint.textContent = domainToggle.checked
+      ? 'ContentLens is ON for this site'
+      : 'ContentLens is DISABLED for this site';
+  }
+
+  // Domain toggle state
+  if (isAllowlist) {
+    domainToggle.checked = s.domainRules[currentHost] === 'enabled';
+  } else {
+    domainToggle.checked = s.domainRules[currentHost] !== 'disabled';
+  }
+
+  // Show enabled sites list only in allowlist mode
+  const enabledHosts = Object.entries(s.domainRules)
+    .filter(([, rule]) => rule === 'enabled')
+    .map(([host]) => host);
+
+  if (isAllowlist && enabledHosts.length > 0) {
+    enabledSitesList.classList.remove('hidden');
+    enabledSitesUl.innerHTML = enabledHosts.map(host => `
+      <li class="enabled-sites__item">
+        <span class="enabled-sites__host">${host}</span>
+        <button class="enabled-sites__remove" data-host="${host}" title="Remove">✕</button>
+      </li>
+    `).join('');
+    enabledSitesUl.querySelectorAll<HTMLButtonElement>('.enabled-sites__remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const host = btn.dataset.host!;
+        const domainRules = { ...settings.domainRules };
+        delete domainRules[host];
+        persistSettings({ domainRules });
+        renderAllowlistUI({ ...settings, domainRules });
+      });
+    });
+  } else {
+    enabledSitesList.classList.add('hidden');
+  }
 }
 
 function setControlsEnabled(enabled: boolean) {
@@ -219,15 +417,41 @@ modeRadios.forEach((radio) => {
   });
 });
 
+allowlistToggle.addEventListener('change', () => {
+  const siteAllowlistMode = allowlistToggle.checked;
+  // When switching to allowlist mode, add current site automatically so user isn't locked out
+  const domainRules = { ...settings.domainRules };
+  if (siteAllowlistMode && currentHost && domainRules[currentHost] !== 'enabled') {
+    domainRules[currentHost] = 'enabled';
+  }
+  persistSettings({ siteAllowlistMode, domainRules });
+  settings = { ...settings, siteAllowlistMode, domainRules };
+  renderAllowlistUI(settings);
+});
+
 domainToggle.addEventListener('change', () => {
   if (!currentHost) return;
   const domainRules = { ...settings.domainRules };
-  if (domainToggle.checked) {
-    delete domainRules[currentHost];
+  const isAllowlist = !!settings.siteAllowlistMode;
+
+  if (isAllowlist) {
+    // Opt-in mode
+    if (domainToggle.checked) {
+      domainRules[currentHost] = 'enabled';
+    } else {
+      delete domainRules[currentHost];
+    }
   } else {
-    domainRules[currentHost] = 'disabled';
+    // Default opt-out mode
+    if (domainToggle.checked) {
+      delete domainRules[currentHost];
+    } else {
+      domainRules[currentHost] = 'disabled';
+    }
   }
   persistSettings({ domainRules });
+  settings = { ...settings, domainRules };
+  renderAllowlistUI(settings);
 });
 
 openOptionsBtn.addEventListener('click', () => {

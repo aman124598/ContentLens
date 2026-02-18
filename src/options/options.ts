@@ -72,21 +72,21 @@ function renderUI(s: ExtensionSettings) {
 }
 
 function renderDomainList(rules: Record<string, string>) {
-  const disabledDomains = Object.entries(rules)
-    .filter(([, rule]) => rule === 'disabled')
-    .map(([host]) => host);
+  const entries = Object.entries(rules);
 
-  if (disabledDomains.length === 0) {
-    domainListEl.innerHTML = '<p class="empty-state">No disabled domains yet.</p>';
+  if (entries.length === 0) {
+    domainListEl.innerHTML = '<p class="empty-state">No domain rules yet.</p>';
     return;
   }
 
   domainListEl.innerHTML = '';
-  for (const host of disabledDomains) {
+  for (const [host, rule] of entries) {
     const tag = document.createElement('div');
     tag.className = 'domain-tag';
+    const icon = rule === 'enabled' ? '✅' : '🚫';
+    const label = rule === 'enabled' ? 'allowed' : 'blocked';
     tag.innerHTML = `
-      <span>🚫 ${escapeHtml(host)}</span>
+      <span>${icon} ${escapeHtml(host)} <em style="font-size:10px;color:#9ca3af">(${label})</em></span>
       <button class="domain-tag__remove" data-host="${escapeHtml(host)}" title="Remove">✕</button>
     `;
     tag.querySelector('.domain-tag__remove')!
@@ -186,10 +186,7 @@ domainInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addDomai
 
 clearCacheBtn.addEventListener('click', async () => {
   if (!confirm('Clear the score cache?')) return;
-  // Send to background to clear persistent cache  
-  chrome.runtime.sendMessage({ type: 'UPDATE_SETTINGS', settings: {} } as ExtensionMessage);
-  // Clear via storage directly
-  chrome.storage.local.remove('cl_score_cache', () => {
+  chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' } as ExtensionMessage, () => {
     cacheCountEl.textContent = '0';
     flashSaveBanner();
   });

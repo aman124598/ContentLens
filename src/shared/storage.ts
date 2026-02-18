@@ -9,6 +9,8 @@ const CACHE_KEY = 'cl_score_cache';
 /** Maximum number of cached score entries */
 const MAX_CACHE_SIZE = 2000;
 
+// ─── Settings ─────────────────────────────────────────────────────────────────
+
 /** Load settings from chrome.storage.local, merging with defaults */
 export async function loadSettings(): Promise<ExtensionSettings> {
   return new Promise((resolve) => {
@@ -26,7 +28,9 @@ export async function saveSettings(settings: ExtensionSettings): Promise<void> {
   });
 }
 
-/** Load the score cache map (hash → score) */
+// ─── Score cache ──────────────────────────────────────────────────────────────
+
+/** Load the full score cache map (hash → score) */
 export async function loadScoreCache(): Promise<Record<string, number>> {
   return new Promise((resolve) => {
     chrome.storage.local.get(CACHE_KEY, (result) => {
@@ -35,31 +39,25 @@ export async function loadScoreCache(): Promise<Record<string, number>> {
   });
 }
 
-/** Save the score cache map */
+/** Persist the score cache, evicting oldest entries if over MAX_CACHE_SIZE */
 export async function saveScoreCache(cache: Record<string, number>): Promise<void> {
-  // Evict oldest entries if over limit (simple LRU approximation: drop first keys)
   const keys = Object.keys(cache);
-  if (keys.length > MAX_CACHE_SIZE) {
-    const trimmed: Record<string, number> = {};
-    keys.slice(keys.length - MAX_CACHE_SIZE).forEach((k) => {
-      trimmed[k] = cache[k];
-    });
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [CACHE_KEY]: trimmed }, resolve);
-    });
-  }
+  const payload: Record<string, number> =
+    keys.length > MAX_CACHE_SIZE
+      ? Object.fromEntries(keys.slice(keys.length - MAX_CACHE_SIZE).map((k) => [k, cache[k]]))
+      : cache;
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [CACHE_KEY]: cache }, resolve);
+    chrome.storage.local.set({ [CACHE_KEY]: payload }, resolve);
   });
 }
 
-/** Look up a single hash in the cache */
+/** Look up a single hash in the persistent cache */
 export async function getCachedScore(hash: string): Promise<number | null> {
   const cache = await loadScoreCache();
   return cache[hash] ?? null;
 }
 
-/** Store a single score result in the cache */
+/** Store a single score result in the persistent cache */
 export async function setCachedScore(hash: string, score: number): Promise<void> {
   const cache = await loadScoreCache();
   cache[hash] = score;
@@ -72,7 +70,7 @@ export async function getCacheSize(): Promise<number> {
   return Object.keys(cache).length;
 }
 
-/** Clear the score cache */
+/** Clear the entire score cache */
 export async function clearScoreCache(): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.local.remove(CACHE_KEY, resolve);

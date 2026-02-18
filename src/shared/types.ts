@@ -40,6 +40,12 @@ export interface ExtensionSettings {
   domainRules: Record<string, DomainRule>;
   /** Minimum text length to consider for scoring */
   minTextLength: number;
+  /**
+   * Allowlist mode: when true the extension ONLY runs on sites explicitly
+   * marked 'enabled' in domainRules.  When false (default) it runs everywhere
+   * except sites explicitly marked 'disabled'.
+   */
+  siteAllowlistMode: boolean;
 }
 
 /** Default extension settings */
@@ -49,6 +55,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
   mode: 'blur',
   domainRules: {},
   minTextLength: 80,
+  siteAllowlistMode: false,
 };
 
 /** License / subscription state stored in chrome.storage.sync */
@@ -59,7 +66,7 @@ export interface LicenseState {
   licenseKey: string | null;
   /** Whether the key has been validated as genuine */
   licenseValid: boolean;
-  /** Email associated with the license (returned by Lemon Squeezy) */
+  /** Email associated with the license (if returned by payment provider) */
   licenseEmail: string | null;
   /** Unix ms timestamp of last successful validation */
   lastValidated: number | null;
@@ -71,8 +78,8 @@ export const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 /** Storage key for license state */
 export const LICENSE_STORAGE_KEY = 'cl_license';
 
-/** Lemon Squeezy store slug — replace with your actual store URL after setup */
-export const LS_CHECKOUT_URL = 'https://contentlens.lemonsqueezy.com/checkout/buy/YOUR_PRODUCT_ID';
+/** Dodo Payments checkout/payment link — replace with your actual payment link URL */
+export const DODO_PAYMENT_LINK = 'https://checkout.dodopayments.com/buy/YOUR_PAYMENT_LINK_ID';
 
 /** Computed access status derived from LicenseState */
 export type LicenseStatus =
@@ -80,6 +87,14 @@ export type LicenseStatus =
   | 'active'       // paid & validated
   | 'expired'      // trial over, no valid license
   | 'grace';       // validation failed but within 24h grace (offline tolerance)
+
+/** Auth state stored in chrome.storage.local */
+export interface AuthSession {
+  userId: string;
+  email: string;
+  /** unix ms — synced from Supabase user_trials table */
+  trialStart: number;
+}
 
 /** Messages exchanged between content script / popup and background worker */
 export type ExtensionMessage =
@@ -92,10 +107,17 @@ export type ExtensionMessage =
   | { type: 'RE_EVALUATE' }
   | { type: 'GET_CACHE_STATS' }
   | { type: 'CACHE_STATS_RESPONSE'; count: number }
+  | { type: 'CLEAR_CACHE' }
   | { type: 'GET_LICENSE' }
   | { type: 'ACTIVATE_LICENSE'; key: string }
   | { type: 'LICENSE_STATE'; state: LicenseState; status: LicenseStatus }
-  | { type: 'DEACTIVATE_LICENSE' };
+  | { type: 'DEACTIVATE_LICENSE' }
+  // ── Auth messages ──────────────────────────────────────────────────────
+  | { type: 'AUTH_SIGN_UP'; email: string; password: string }
+  | { type: 'AUTH_SIGN_IN'; email: string; password: string }
+  | { type: 'AUTH_SIGN_OUT' }
+  | { type: 'AUTH_GET_SESSION' }
+  | { type: 'AUTH_SESSION_RESPONSE'; session: AuthSession | null };
 
 /** Feature vector produced by the heuristic engine */
 export interface HeuristicFeatures {

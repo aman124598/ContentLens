@@ -1,12 +1,13 @@
 // src/shared/license.ts
-// License validation logic: trial tracking + Lemon Squeezy key verification.
-// All validation runs in the background service worker (has network access).
+// License validation logic: trial tracking + Dodo Payments key verification.
+// Trial start date is authoritative from Supabase (prevents multi-account abuse).
+// Falls back to local installDate only when not signed in.
 
 import { LicenseState, LicenseStatus, LICENSE_STORAGE_KEY, TRIAL_MS } from './types';
 
-// ─── Lemon Squeezy API ────────────────────────────────────────────────────────
-// Replace YOUR_LS_STORE_ID with your actual store ID from lemonsqueezy.com
-const LS_VALIDATE_URL = 'https://api.lemonsqueezy.com/v1/licenses/validate';
+// ─── Dodo Payments API ────────────────────────────────────────────────────────
+// Dodo validation endpoint (live environment).
+const DODO_VALIDATE_URL = 'https://live.dodopayments.com/licenses/validate';
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
@@ -43,7 +44,7 @@ export async function ensureInstallDate(): Promise<LicenseState> {
 
 // ─── Status computation ───────────────────────────────────────────────────────
 
-export function computeStatus(state: LicenseState): LicenseStatus {
+export function computeStatus(state: LicenseState, canonicalTrialStart?: number): LicenseStatus {
   // 1. Valid paid license
   if (state.licenseValid) {
     // Offline grace: if validation is stale by > 48 h but key exists, allow grace
@@ -52,8 +53,10 @@ export function computeStatus(state: LicenseState): LicenseStatus {
     return 'grace';
   }
 
-  // 2. Within free trial
-  const elapsed = Date.now() - (state.installDate ?? Date.now());
+  // 2. Use the Supabase-authoritative trial start when available;
+  //    otherwise fall back to local installDate (offline / not signed in).
+  const trialStart = canonicalTrialStart ?? state.installDate ?? Date.now();
+  const elapsed = Date.now() - trialStart;
   if (elapsed < TRIAL_MS) return 'trial';
 
   // 3. Trial expired, no license
@@ -76,7 +79,7 @@ export function trialCountdown(state: LicenseState): string {
   return 'less than 1 hour left';
 }
 
-// ─── License key validation via Lemon Squeezy ────────────────────────────────
+// ─── License key validation via Dodo Payments ────────────────────────────────
 
 export interface ValidationResult {
   valid: boolean;
@@ -86,7 +89,7 @@ export interface ValidationResult {
 
 export async function validateLicenseKey(key: string): Promise<ValidationResult> {
   try {
-    const res = await fetch(LS_VALIDATE_URL, {
+    const res = await fetch(DODO_VALIDATE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ license_key: key }),
@@ -99,8 +102,9 @@ export async function validateLicenseKey(key: string): Promise<ValidationResult>
 
     const data = await res.json() as {
       valid: boolean;
-      license_key?: { key: string; status: string };
-      meta?: { store_id: number; order_id: number; customer_email?: string };
+      customer_email?: string;
+      customer?: { email?: string };
+      meta?: { customer_email?: string };
       error?: string;
     };
 
@@ -110,7 +114,7 @@ export async function validateLicenseKey(key: string): Promise<ValidationResult>
 
     return {
       valid: true,
-      email: data.meta?.customer_email,
+      email: data.customer_email ?? data.customer?.email ?? data.meta?.customer_email,
     };
   } catch (err) {
     return { valid: false, error: String(err) };

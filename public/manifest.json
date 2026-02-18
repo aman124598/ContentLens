@@ -8,8 +8,13 @@
     "activeTab"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "<all_urls>",
+    "https://*.supabase.co/*",
+    "https://live.dodopayments.com/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.supabase.co https://live.dodopayments.com"
+  },
   "background": {
     "service_worker": "background.js",
     "type": "module"

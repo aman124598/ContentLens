@@ -2,12 +2,15 @@
 // Background service worker — handles scoring requests, settings management, caching
 
 import { ExtensionMessage, ExtensionSettings } from '../shared/types';
-import { loadSettings, saveSettings, getCachedScore, setCachedScore, getCacheSize } from '../shared/storage';
+import {
+  loadSettings, saveSettings, getCachedScore, setCachedScore, getCacheSize, clearScoreCache
+} from '../shared/storage';
 import { scoreText } from '../scoring/heuristics';
 import {
   loadLicenseState, saveLicenseState, ensureInstallDate,
   computeStatus, validateLicenseKey,
 } from '../shared/license';
+import { signUp, signIn, signOut, getSessionUser, fetchTrialRecord } from '../shared/auth';
 
 // ─── In-memory settings cache ─────────────────────────────────────────────────
 let cachedSettings: ExtensionSettings | null = null;
@@ -79,10 +82,18 @@ async function handleMessage(
         break;
       }
 
+      case 'CLEAR_CACHE': {
+        await clearScoreCache();
+        sendResponse({ ok: true });
+        break;
+      }
+
       // ── License messages ────────────────────────────────────────────────────────────
       case 'GET_LICENSE': {
         const state = await loadLicenseState();
-        const status = computeStatus(state);
+        // Fetch canonical trial start from Supabase (prevents multi-trial abuse)
+        const trialRecord = await fetchTrialRecord();
+        const status = computeStatus(state, trialRecord?.trialStart);
         sendResponse({ state, status });
         break;
       }
@@ -96,7 +107,9 @@ async function handleMessage(
           state.licenseEmail = result.email ?? null;
           state.lastValidated = Date.now();
           await saveLicenseState(state);
-          const status = computeStatus(state);
+          // Use Supabase trial record so status is accurate
+          const trialRec = await fetchTrialRecord();
+          const status = computeStatus(state, trialRec?.trialStart);
           sendResponse({ ok: true, state, status });
         } else {
           sendResponse({ ok: false, error: result.error ?? 'Validation failed' });
@@ -111,8 +124,64 @@ async function handleMessage(
         state.licenseEmail = null;
         state.lastValidated = null;
         await saveLicenseState(state);
-        const status = computeStatus(state);
+        const trialRecord2 = await fetchTrialRecord();
+        const status = computeStatus(state, trialRecord2?.trialStart);
         sendResponse({ ok: true, state, status });
+        break;
+      }
+
+      // ── Auth messages ──────────────────────────────────────────────────────
+      case 'AUTH_GET_SESSION': {
+        const user = await getSessionUser();
+        if (!user) { sendResponse({ session: null }); break; }
+        const trial = await fetchTrialRecord();
+        sendResponse({
+          session: trial
+            ? { userId: user.id, email: user.email, trialStart: trial.trialStart }
+            : null,
+        });
+        break;
+      }
+
+      case 'AUTH_SIGN_UP': {
+        const result = await signUp(message.email, message.password);
+        if (!result.ok || !result.user) {
+          sendResponse({ ok: false, error: result.error });
+          break;
+        }
+        const trialRec = await fetchTrialRecord();
+        sendResponse({
+          ok: true,
+          session: {
+            userId: result.user.id,
+            email: result.user.email,
+            trialStart: trialRec?.trialStart ?? Date.now(),
+          },
+        });
+        break;
+      }
+
+      case 'AUTH_SIGN_IN': {
+        const result = await signIn(message.email, message.password);
+        if (!result.ok || !result.user) {
+          sendResponse({ ok: false, error: result.error });
+          break;
+        }
+        const trialRec = await fetchTrialRecord();
+        sendResponse({
+          ok: true,
+          session: {
+            userId: result.user.id,
+            email: result.user.email,
+            trialStart: trialRec?.trialStart ?? Date.now(),
+          },
+        });
+        break;
+      }
+
+      case 'AUTH_SIGN_OUT': {
+        await signOut();
+        sendResponse({ ok: true });
         break;
       }
 

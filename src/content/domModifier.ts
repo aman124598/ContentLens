@@ -1,7 +1,7 @@
 // src/content/domModifier.ts
 // Apply/remove visual modifications on DOM elements based on score and mode.
 
-import { FilterMode, LS_CHECKOUT_URL } from '../shared/types';
+import { FilterMode, DODO_PAYMENT_LINK } from '../shared/types';
 
 const ATTR_SCORE = 'data-cl-score';
 const ATTR_MODE = 'data-cl-mode';
@@ -321,7 +321,7 @@ export function showPaywallBanner(daysLeft: number) {
       }
     </style>
     <span class="cl-pw-msg">🔍 ${msg}</span>
-    <a class="cl-pw-cta" href="${LS_CHECKOUT_URL}" target="_blank" rel="noopener">
+    <a class="cl-pw-cta" href="${DODO_PAYMENT_LINK}" target="_blank" rel="noopener">
       ${isExpired ? 'Unlock Lifetime — $5' : 'Upgrade — $5 Lifetime'}
     </a>
     <button class="cl-pw-close" title="Dismiss for now">✕</button>

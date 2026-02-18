@@ -46,6 +46,18 @@ npm run dev          # watch mode
 
 ---
 
+## Payments and License Activation (Dodo Payments)
+
+1. Create your product/payment link in Dodo Payments.
+2. Set your payment link in `src/shared/types.ts` (`DODO_PAYMENT_LINK`).
+3. Ensure Dodo sends the customer license key after purchase.
+4. User enters that key in the extension popup to activate access.
+
+License validation endpoint used by the extension:
+- `POST https://live.dodopayments.com/licenses/validate`
+
+---
+
 ## Project Structure
 
 ```

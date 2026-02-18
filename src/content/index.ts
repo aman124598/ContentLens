@@ -41,22 +41,27 @@ async function init() {
   // Check domain rules
   const hostname = window.location.hostname;
   const domainRule = settings.domainRules[hostname];
-  if (domainRule === 'disabled') return;
+  if (settings.siteAllowlistMode) {
+    // Opt-in mode: only run on sites explicitly enabled
+    if (domainRule !== 'enabled') return;
+  } else {
+    // Default opt-out mode: run everywhere except disabled sites
+    if (domainRule === 'disabled') return;
+  }
 
   injectStyles();
 
   // ── License / trial gate ──────────────────────────────────────────────────
-  licenseStatus = await fetchLicenseStatus();
+  const { status: ls, daysLeft } = await fetchLicenseInfo();
+  licenseStatus = ls;
   if (licenseStatus === 'expired') {
     showPaywallBanner(0);
     return; // don't start scanning
   }
   if (licenseStatus === 'trial') {
-    const installDate = await fetchInstallDate();
-    const daysLeft = Math.ceil(Math.max(0, TRIAL_MS - (Date.now() - installDate)) / (24 * 60 * 60 * 1000));
     showPaywallBanner(daysLeft);
   }
-  if (licenseStatus === 'active') {
+  if (licenseStatus === 'active' || licenseStatus === 'grace') {
     removePaywallBanner();
   }
 
@@ -86,25 +91,31 @@ function fetchSettings(): Promise<ExtensionSettings> {
   });
 }
 
-function fetchLicenseStatus(): Promise<LicenseStatus> {
+/** Single round-trip: fetch license status + compute trial days remaining */
+function fetchLicenseInfo(): Promise<{ status: LicenseStatus; daysLeft: number }> {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'GET_LICENSE' } as ExtensionMessage, (response) => {
       if (chrome.runtime.lastError || !response) {
-        resolve('trial'); // fail open — don’t punish offline users
+        chrome.storage.local.get('cl_install_date', (r) => {
+          const installDate = (r['cl_install_date'] as number | undefined) ?? 0;
+          const elapsed = Date.now() - installDate;
+          const daysLeft = Math.ceil(Math.max(0, TRIAL_MS - elapsed) / 86400000);
+          resolve({ status: elapsed < TRIAL_MS ? 'trial' : 'expired', daysLeft });
+        });
         return;
       }
-      resolve((response as { status: LicenseStatus }).status ?? 'trial');
+      const res = response as { status: LicenseStatus; state?: { installDate?: number } };
+      const status = res.status ?? 'expired';
+      const installDate = res.state?.installDate ?? Date.now();
+      const daysLeft = Math.ceil(Math.max(0, TRIAL_MS - (Date.now() - installDate)) / 86400000);
+      resolve({ status, daysLeft });
     });
   });
 }
 
-function fetchInstallDate(): Promise<number> {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: 'GET_LICENSE' } as ExtensionMessage, (response) => {
-      if (chrome.runtime.lastError || !response) { resolve(Date.now()); return; }
-      resolve((response as { state?: { installDate?: number } }).state?.installDate ?? Date.now());
-    });
-  });
+/** Lightweight status-only check used by RE_EVALUATE and SPA nav */
+function fetchLicenseStatus(): Promise<LicenseStatus> {
+  return fetchLicenseInfo().then((r) => r.status);
 }
 
 // ─── Initial DOM Scan ─────────────────────────────────────────────────────────
@@ -183,6 +194,15 @@ function startObserver() {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       setTimeout(async () => {
+        // Re-verify license on every SPA navigation — trial may have just expired
+        licenseStatus = await fetchLicenseStatus();
+        if (licenseStatus === 'expired') {
+          clearEverything();
+          stopObserver();
+          showPaywallBanner(0);
+          clearInterval(navInterval);
+          return;
+        }
         elementScores.clear();
         scoredHashes.clear();
         pendingQueue.clear();
@@ -318,7 +338,9 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
 
     // If domain rule changed check current domain
     const hostname = window.location.hostname;
-    if (settings.domainRules[hostname] === 'disabled') {
+    const _rule = settings.domainRules[hostname];
+    const _blocked = settings.siteAllowlistMode ? _rule !== 'enabled' : _rule === 'disabled';
+    if (_blocked) {
       clearAllFilters();
       stopObserver();
     }
@@ -328,11 +350,21 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
   }
 
   if (message.type === 'RE_EVALUATE') {
-    elementScores.clear();
-    scoredHashes.clear();
-    pendingQueue.clear();
-    clearEverything();
-    runInitialScan();
+    // Re-check license before allowing a fresh scan
+    fetchLicenseStatus().then((status) => {
+      licenseStatus = status;
+      if (licenseStatus === 'expired') {
+        clearEverything();
+        stopObserver();
+        showPaywallBanner(0);
+        return;
+      }
+      elementScores.clear();
+      scoredHashes.clear();
+      pendingQueue.clear();
+      clearEverything();
+      runInitialScan();
+    });
     sendResponse({ ok: true });
     return true;
   }

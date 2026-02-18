@@ -78,6 +78,24 @@
       </section>
 
       <section class="section section--domain">
+        <!-- Allowlist mode toggle -->
+        <div class="allowlist-row">
+          <div class="allowlist-info">
+            <span class="allowlist-info__icon">🛡</span>
+            <div>
+              <span class="allowlist-info__label">Selected sites only</span>
+              <p class="allowlist-info__sub" id="allowlistSub">Works on all sites</p>
+            </div>
+          </div>
+          <label class="toggle toggle--sm" title="Only run on sites you enable">
+            <input type="checkbox" id="allowlistToggle" />
+            <span class="toggle__track">
+              <span class="toggle__thumb"></span>
+            </span>
+          </label>
+        </div>
+
+        <!-- Current site row -->
         <div class="domain-row">
           <div class="domain-info">
             <span class="domain-info__icon">🌐</span>
@@ -90,7 +108,13 @@
             </span>
           </label>
         </div>
-        <p class="domain-hint">Enable/disable ContentLens on this site</p>
+        <p class="domain-hint" id="domainHint">Enable/disable ContentLens on this site</p>
+
+        <!-- Enabled sites list -->
+        <div id="enabledSitesList" class="enabled-sites hidden">
+          <p class="enabled-sites__title">Active on:</p>
+          <ul id="enabledSitesUl" class="enabled-sites__ul"></ul>
+        </div>
       </section>
 
       <div class="stats-row">
@@ -132,6 +156,29 @@
       </a>
     </div>
 
+  </div>
+
+  <!-- ── Auth wall (shown when not signed in) ────────────────────────── -->
+  <div id="authWall" class="auth-wall hidden">
+    <div class="auth-wall__logo">🔍</div>
+    <h2 class="auth-wall__title">ContentLens</h2>
+    <p class="auth-wall__sub">Sign in to start your free 7-day trial</p>
+
+    <!-- Tab switcher -->
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="authTabLogin">Sign In</button>
+      <button class="auth-tab" id="authTabSignup">Create Account</button>
+    </div>
+
+    <div class="auth-form">
+      <input type="email" id="authEmail" class="auth-input" placeholder="Email address" autocomplete="email" />
+      <input type="password" id="authPassword" class="auth-input" placeholder="Password"
+        autocomplete="current-password" />
+      <p id="authConfirmHint" class="auth-confirm-hint hidden">Choose a strong password (min 6 chars)</p>
+      <button id="authSubmitBtn" class="auth-submit-btn">Sign In</button>
+      <p id="authError" class="auth-error hidden"></p>
+      <p id="authSuccess" class="auth-success hidden"></p>
+    </div>
   </div>
 
   <script type="module" src="popup.js"></script>
