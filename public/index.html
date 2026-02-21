@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ContentLens | Detect AI Replies Instantly</title>
+  <meta
+    name="description"
+    content="ContentLens helps you detect and filter AI-generated replies across the web. Sign in, start a 7-day trial, then unlock lifetime access for $9."
+  />
+  <meta name="theme-color" content="#0b1222" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #080d18;
+      --panel: #0f1728;
+      --panel-2: #101c33;
+      --text: #eaf0ff;
+      --muted: #a8b4d8;
+      --line: #2b3d69;
+      --primary: #6f7dff;
+      --primary-2: #4f63ff;
+      --accent: #2fd4a2;
+      --accent-2: #9be1ff;
+      --warn: #ffce72;
+      --glow: rgba(111, 125, 255, 0.35);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", "Trebuchet MS", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(900px 420px at 12% -8%, rgba(91, 123, 255, 0.35), transparent 60%),
+        radial-gradient(760px 460px at 88% -12%, rgba(47, 212, 162, 0.22), transparent 62%),
+        linear-gradient(180deg, #0a1120 0%, #080d18 100%);
+      color: var(--text);
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    .page {
+      position: relative;
+      isolation: isolate;
+    }
+
+    .ambient {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(ellipse at center, black 48%, transparent 84%);
+    }
+
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 26px 20px 60px;
+    }
+
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-family: "Sora", "Verdana", sans-serif;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      text-decoration: none;
+      color: var(--text);
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: linear-gradient(180deg, var(--accent), #16a477);
+      box-shadow: 0 0 0 6px rgba(47, 212, 162, 0.16);
+    }
+
+    .tag {
+      border: 1px solid var(--line);
+      background: rgba(111, 125, 255, 0.1);
+      color: #d4dcff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 7px 10px;
+      border-radius: 999px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .hero-main {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 30px;
+      box-shadow: 0 24px 70px -36px var(--glow);
+      animation: rise 500ms ease;
+    }
+
+    .hero-side {
+      background: linear-gradient(180deg, rgba(47, 212, 162, 0.09), rgba(155, 225, 255, 0.02));
+      border: 1px solid rgba(155, 225, 255, 0.28);
+      border-radius: 18px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      animation: rise 620ms ease;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-family: "Sora", "Verdana", sans-serif;
+      font-size: clamp(30px, 5vw, 50px);
+      line-height: 1.12;
+      letter-spacing: -0.02em;
+      max-width: 16ch;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin: 0 0 20px;
+      max-width: 700px;
+    }
+
+    .highlights {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .chip {
+      border: 1px solid #344c82;
+      background: rgba(111, 125, 255, 0.08);
+      color: #dbe3ff;
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .cta {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .btn {
+      display: inline-block;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 10px 14px;
+      border-radius: 11px;
+      border: 1px solid transparent;
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+    }
+
+    .btn-primary {
+      color: white;
+      background: linear-gradient(180deg, var(--primary), var(--primary-2));
+      box-shadow: 0 16px 34px -20px var(--glow);
+    }
+
+    .btn-ghost {
+      color: var(--text);
+      border-color: var(--line);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .kpi {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      padding: 10px 12px;
+    }
+
+    .kpi b {
+      display: block;
+      font-size: 19px;
+      font-family: "Sora", "Verdana", sans-serif;
+      color: #ffffff;
+      margin-bottom: 2px;
+    }
+
+    .kpi span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .price-box {
+      background: linear-gradient(180deg, rgba(47, 212, 162, 0.16), rgba(47, 212, 162, 0.05));
+      border: 1px solid rgba(47, 212, 162, 0.45);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .price-box .money {
+      font-size: 34px;
+      font-family: "Sora", "Verdana", sans-serif;
+      font-weight: 800;
+      line-height: 1;
+      margin-right: 6px;
+    }
+
+    .price-meta {
+      color: #d5ffe9;
+      font-size: 13px;
+    }
+
+    .side-list {
+      margin: 0;
+      padding-left: 16px;
+      color: #cde9ff;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .section {
+      margin-top: 14px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 22px;
+      animation: rise 720ms ease;
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 22px;
+      font-family: "Sora", "Verdana", sans-serif;
+      letter-spacing: -0.01em;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel-2), rgba(16, 28, 51, 0.75));
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 15px;
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 10px;
+    }
+
+    .step {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .step .num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #e5ebff;
+      background: #233865;
+      margin-bottom: 8px;
+    }
+
+    .step h3 {
+      margin: 0 0 4px;
+      font-size: 14px;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .foot {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .foot b {
+      color: var(--warn);
+    }
+
+    .foot-links {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    @keyframes rise {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 680px) {
+      .wrap {
+        padding: 20px 14px 44px;
+      }
+      .hero-main,
+      .hero-side,
+      .section {
+        padding: 18px;
+      }
+      .kpis {
+        grid-template-columns: 1fr;
+      }
+      .nav {
+        margin-bottom: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="ambient" aria-hidden="true"></div>
+    <div class="wrap">
+      <header class="nav">
+        <a class="brand" href="/" aria-label="ContentLens home">
+          <span class="brand-dot" aria-hidden="true"></span>
+          <span>ContentLens</span>
+        </a>
+        <div class="tag">AI Reply Filter</div>
+      </header>
+
+      <section class="hero">
+        <article class="hero-main">
+          <h1>Spot AI-generated replies before they shape your feed.</h1>
+          <p class="sub">
+            ContentLens analyzes reply patterns directly in your browser and gives every reply a probability score. Blur, hide, highlight, or badge likely AI content in real time.
+          </p>
+
+          <div class="highlights">
+            <span class="chip">Sign-in required</span>
+            <span class="chip">7-day free trial</span>
+            <span class="chip">Local scoring</span>
+            <span class="chip">Lifetime unlock</span>
+          </div>
+
+          <div class="cta">
+            <a class="btn btn-primary" href="https://checkout.dodopayments.com/buy/pdt_0NYkwaaZugSG9iopGS3Qz?quantity=1" target="_blank" rel="noopener">
+              Buy Lifetime Access - $9
+            </a>
+            <a class="btn btn-ghost" href="/popup">Open Extension Popup</a>
+            <a class="btn btn-ghost" href="/options">Open Settings</a>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi">
+              <b>7 Days</b>
+              <span>Free trial window</span>
+            </div>
+            <div class="kpi">
+              <b>$9</b>
+              <span>One-time lifetime price</span>
+            </div>
+            <div class="kpi">
+              <b>100%</b>
+              <span>On-device scoring logic</span>
+            </div>
+          </div>
+        </article>
+
+        <aside class="hero-side">
+          <div class="price-box">
+            <span class="money">$9</span>
+            <span class="price-meta">one-time payment<br />lifetime access</span>
+          </div>
+          <ul class="side-list">
+            <li>Works after sign-in only</li>
+            <li>Trial starts on first successful login</li>
+            <li>License key activation after trial</li>
+            <li>Supports blur, hide, highlight, badge modes</li>
+          </ul>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://checkout.dodopayments.com/buy/pdt_0NYkwaaZugSG9iopGS3Qz?quantity=1" target="_blank" rel="noopener">
+              Upgrade Now
+            </a>
+          </div>
+        </aside>
+      </section>
+
+      <section class="section">
+        <h2>Why ContentLens</h2>
+        <div class="grid">
+          <article class="card">
+            <h3>Real-Time Reply Scoring</h3>
+            <p>Each visible reply gets a 1-10 AI-likelihood score so you can filter fast without leaving the page.</p>
+          </article>
+          <article class="card">
+            <h3>Flexible Controls</h3>
+            <p>Choose blur, hide, highlight, or badge-only mode based on how strict you want your feed cleanup to be.</p>
+          </article>
+          <article class="card">
+            <h3>Site-Level Targeting</h3>
+            <p>Run on selected sites only, or block specific domains where you do not want automated filtering.</p>
+          </article>
+          <article class="card">
+            <h3>Designed for Signal</h3>
+            <p>Heuristics are optimized for modern AI reply patterns, social phrasing, and structured assistant-style outputs.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>How It Works</h2>
+        <div class="steps">
+          <article class="step">
+            <span class="num">1</span>
+            <h3>Create Account</h3>
+            <p>Sign up and sign in to start using ContentLens. Session is kept unless extension data is removed.</p>
+          </article>
+          <article class="step">
+            <span class="num">2</span>
+            <h3>Start Free Trial</h3>
+            <p>Your 7-day trial starts on first successful login. All core filtering features are available.</p>
+          </article>
+          <article class="step">
+            <span class="num">3</span>
+            <h3>Unlock Lifetime</h3>
+            <p>After trial ends, activate your license key from a one-time $9 purchase to continue full access.</p>
+          </article>
+        </div>
+
+        <p class="foot">
+          <b>Note:</b> Scores are probabilistic indicators, not definitive proof of authorship.
+        </p>
+        <div class="foot-links">
+          <a class="btn btn-ghost" href="/popup">Popup</a>
+          <a class="btn btn-ghost" href="/options">Options</a>
+          <a class="btn btn-primary" href="https://checkout.dodopayments.com/buy/pdt_0NYkwaaZugSG9iopGS3Qz?quantity=1" target="_blank" rel="noopener">
+            Get Lifetime - $9
+          </a>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>

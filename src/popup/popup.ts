@@ -2,8 +2,7 @@
 // Popup UI logic
 
 import './popup.css';
-import { ExtensionSettings, FilterMode, ExtensionMessage, LicenseState, LicenseStatus, AuthSession, DODO_PAYMENT_LINK, TRIAL_DAYS } from '../shared/types';
-import { trialCountdown } from '../shared/license';
+import { AccessGate, ExtensionSettings, FilterMode, ExtensionMessage, LicenseState, LicenseStatus, AuthSession, DODO_PAYMENT_LINK, TRIAL_DAYS } from '../shared/types';
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -35,7 +34,7 @@ const authError = document.getElementById('authError')!;
 const authSuccess = document.getElementById('authSuccess')!;
 
 // Main popup wrapper (everything except authWall)
-const popup = document.querySelector('.popup') as HTMLElement;;
+const popup = document.querySelector('.popup') as HTMLElement;
 
 // License UI
 const licenseBar = document.getElementById('licenseBar')!;
@@ -214,10 +213,29 @@ function fetchLicense(): Promise<{ state: LicenseState; status: LicenseStatus }>
   });
 }
 
+function fetchAccessGate(): Promise<AccessGate> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'GET_ACCESS_GATE' } as ExtensionMessage, (res) => {
+      if (!res?.gate) {
+        resolve({
+          allowed: false,
+          status: 'expired',
+          reason: 'blocked_unknown',
+          daysLeft: 0,
+          requiresAuth: false,
+        });
+        return;
+      }
+      resolve(res.gate as AccessGate);
+    });
+  });
+}
+
 // ─── License UI ───────────────────────────────────────────────────────────────
 
 async function renderLicenseUI() {
-  const { state, status } = await fetchLicense();
+  const [{ state }, gate] = await Promise.all([fetchLicense(), fetchAccessGate()]);
+  const status = gate.status;
 
   // Set buy button URL
   licenseBuyBtn.href = DODO_PAYMENT_LINK;
@@ -233,7 +251,8 @@ async function renderLicenseUI() {
     document.getElementById('deactivateBtn')?.addEventListener('click', deactivateLicense);
     document.getElementById('signOutBtn')?.addEventListener('click', handleSignOut);
   } else if (status === 'trial') {
-    const countdown = trialCountdown(state);
+    const daysLeft = Math.max(0, gate.daysLeft);
+    const countdown = daysLeft > 0 ? `${daysLeft} day${daysLeft !== 1 ? 's' : ''} left` : 'less than 1 day left';
     licenseBarText.textContent = `🎁 Free trial: ${countdown}`;
     licenseUpgradeBtn.classList.remove('hidden');
     licensePanel.classList.remove('hidden');
@@ -246,7 +265,7 @@ async function renderLicenseUI() {
     licenseUpgradeBtn.classList.remove('hidden');
     licensePanel.classList.remove('hidden');
     licensePanelTitle.textContent = 'Your free trial has ended';
-    licensePanelSub.textContent = 'Get lifetime access for a one-time $5 payment, then enter your license key below.';
+    licensePanelSub.textContent = 'Get lifetime access for a one-time $9 payment, then enter your license key below.';
   }
 }
 

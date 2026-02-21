@@ -3,10 +3,12 @@
 
 import './options.css';
 import {
+  AccessGate,
   ExtensionSettings,
   FilterMode,
   ExtensionMessage,
   DEFAULT_SETTINGS,
+  DODO_PAYMENT_LINK,
 } from '../shared/types';
 
 // ─── DOM refs ─────────────────────────────────────────────────────────────────
@@ -24,15 +26,19 @@ const clearCacheBtn = document.getElementById('clearCacheBtn')!;
 const saveBtn = document.getElementById('saveBtn')!;
 const resetBtn = document.getElementById('resetBtn')!;
 const saveBanner = document.getElementById('saveBanner')!;
+const accessNotice = document.getElementById('accessNotice')!;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 let settings: ExtensionSettings;
+let optionsReadOnly = false;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
-  settings = await fetchSettings();
+  const [gate, loadedSettings] = await Promise.all([fetchAccessGate(), fetchSettings()]);
+  settings = loadedSettings;
+  applyAccessPolicy(gate);
   renderUI(settings);
   fetchCacheStats();
   setupSidebarNav();
@@ -44,6 +50,55 @@ function fetchSettings(): Promise<ExtensionSettings> {
       resolve(res?.settings ?? { ...DEFAULT_SETTINGS });
     });
   });
+}
+
+function fetchAccessGate(): Promise<AccessGate> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'GET_ACCESS_GATE' } as ExtensionMessage, (res) => {
+      if (!res?.gate) {
+        resolve({
+          allowed: false,
+          status: 'expired',
+          reason: 'blocked_unknown',
+          daysLeft: 0,
+          requiresAuth: false,
+        });
+        return;
+      }
+      resolve(res.gate as AccessGate);
+    });
+  });
+}
+
+function applyAccessPolicy(gate: AccessGate) {
+  optionsReadOnly = !gate.allowed;
+  if (!optionsReadOnly) {
+    accessNotice.classList.add('hidden');
+    accessNotice.textContent = '';
+    setInputsDisabled(false);
+    return;
+  }
+
+  if (gate.reason === 'blocked_signed_out') {
+    accessNotice.textContent = 'Sign in from the extension popup to use ContentLens settings.';
+  } else if (gate.reason === 'blocked_trial_expired') {
+    accessNotice.innerHTML = `Your trial has ended. Upgrade and activate your license key to continue. <a href="${DODO_PAYMENT_LINK}" target="_blank" rel="noopener">Upgrade</a>`;
+  } else {
+    accessNotice.textContent = 'ContentLens access is currently blocked. Sign in and verify your license state.';
+  }
+  accessNotice.classList.remove('hidden');
+  setInputsDisabled(true);
+}
+
+function setInputsDisabled(disabled: boolean) {
+  thresholdSlider.disabled = disabled;
+  minLengthSlider.disabled = disabled;
+  domainInput.disabled = disabled;
+  (addDomainBtn as HTMLButtonElement).disabled = disabled;
+  (clearCacheBtn as HTMLButtonElement).disabled = disabled;
+  (saveBtn as HTMLButtonElement).disabled = disabled;
+  (resetBtn as HTMLButtonElement).disabled = disabled;
+  modeRadios.forEach((r) => { r.disabled = disabled; });
 }
 
 function fetchCacheStats() {
@@ -89,8 +144,9 @@ function renderDomainList(rules: Record<string, string>) {
       <span>${icon} ${escapeHtml(host)} <em style="font-size:10px;color:#9ca3af">(${label})</em></span>
       <button class="domain-tag__remove" data-host="${escapeHtml(host)}" title="Remove">✕</button>
     `;
-    tag.querySelector('.domain-tag__remove')!
-      .addEventListener('click', () => removeDomain(host));
+    const removeBtn = tag.querySelector('.domain-tag__remove') as HTMLButtonElement;
+    removeBtn.disabled = optionsReadOnly;
+    removeBtn.addEventListener('click', () => removeDomain(host));
     domainListEl.appendChild(tag);
   }
 }
@@ -113,6 +169,7 @@ function updateSliderTrackRaw(input: HTMLInputElement, val: number, min: number,
 // ─── Domain helpers ───────────────────────────────────────────────────────────
 
 function addDomain() {
+  if (optionsReadOnly) return;
   let host = domainInput.value.trim().toLowerCase();
   if (!host) return;
   // Strip protocol if provided
@@ -125,6 +182,7 @@ function addDomain() {
 }
 
 function removeDomain(host: string) {
+  if (optionsReadOnly) return;
   delete settings.domainRules[host];
   renderDomainList(settings.domainRules);
 }
@@ -145,6 +203,7 @@ function collectSettings(): ExtensionSettings {
 }
 
 function saveSettings() {
+  if (optionsReadOnly) return;
   const updated = collectSettings();
   chrome.runtime.sendMessage({
     type: 'UPDATE_SETTINGS',
@@ -161,6 +220,7 @@ function flashSaveBanner() {
 }
 
 function resetToDefaults() {
+  if (optionsReadOnly) return;
   if (!confirm('Reset all settings to defaults?')) return;
   settings = { ...DEFAULT_SETTINGS };
   renderUI(settings);
@@ -185,6 +245,7 @@ addDomainBtn.addEventListener('click', addDomain);
 domainInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addDomain(); });
 
 clearCacheBtn.addEventListener('click', async () => {
+  if (optionsReadOnly) return;
   if (!confirm('Clear the score cache?')) return;
   chrome.runtime.sendMessage({ type: 'CLEAR_CACHE' } as ExtensionMessage, () => {
     cacheCountEl.textContent = '0';

@@ -1,6 +1,6 @@
 // src/shared/auth.ts
 // Auth helpers: sign-up / sign-in / sign-out via Supabase.
-// Handles per-email trial enforcement using a `user_trials` table.
+// Trial starts on first successful sign-in via `ensureTrialRecord`.
 //
 // Required Supabase table (run in SQL editor):
 //
@@ -44,9 +44,6 @@ export async function signUp(email: string, password: string): Promise<AuthResul
   if (error) return { ok: false, error: error.message };
   if (!data.user) return { ok: false, error: 'Sign-up failed — no user returned.' };
 
-  // Create trial record for this user (only if not already existing)
-  await ensureTrialRecord(data.user.id, email);
-
   return {
     ok: true,
     user: { id: data.user.id, email: data.user.email ?? email },
@@ -61,6 +58,9 @@ export async function signIn(email: string, password: string): Promise<AuthResul
 
   if (error) return { ok: false, error: error.message };
   if (!data.user) return { ok: false, error: 'Sign-in failed.' };
+
+  // Trial starts at first successful sign-in; ensure record exists.
+  await ensureTrialRecord(data.user.id, data.user.email ?? email);
 
   return {
     ok: true,
@@ -91,15 +91,23 @@ export async function getSessionUser(): Promise<AuthUser | null> {
  */
 export async function ensureTrialRecord(userId: string, email: string): Promise<TrialRecord> {
   const sb = getSupabase();
+  const normalizedEmail = email.trim().toLowerCase();
 
   // Try to fetch existing record
   const { data: existing } = await sb
     .from('user_trials')
-    .select('trial_start')
+    .select('trial_start, email')
     .eq('user_id', userId)
     .single();
 
   if (existing?.trial_start) {
+    // Keep email in sync in case user email changed.
+    if (existing.email !== normalizedEmail) {
+      await sb
+        .from('user_trials')
+        .update({ email: normalizedEmail })
+        .eq('user_id', userId);
+    }
     return { trialStart: existing.trial_start as number };
   }
 
@@ -107,7 +115,7 @@ export async function ensureTrialRecord(userId: string, email: string): Promise<
   const trialStart = Date.now();
   await sb.from('user_trials').upsert({
     user_id: userId,
-    email,
+    email: normalizedEmail,
     trial_start: trialStart,
   });
 

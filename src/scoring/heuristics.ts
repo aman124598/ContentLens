@@ -14,7 +14,10 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
   /\b(great|excellent|good|wonderful|fantastic|amazing|valid|insightful|thought[- ]?ful)\s+(question|point|observation|perspective|post|comment|insight)\b/i,
   /\b(certainly|absolutely|of course|indeed|definitely|sure thing|sure,)\b/i,
   /\bthank you for (sharing|your|the|raising|asking|bringing)\b/i,
+  /\bthanks for (sharing|posting|commenting|the thoughtful|your thoughtful)\b/i,
   /\bthanks? for (bringing this|highlighting|pointing this out|the question)\b/i,
+  /\bi appreciate (your|the) (insight|perspective|input|question|comment)\b/i,
+  /\bthat's a (great|solid|important|fair|valid) (point|question|observation|take)\b/i,
   /\byou('ve| have) (raised|made|brought up|touched on) (a |an )?(valid|important|excellent|great|key|interesting)\b/i,
   /\b(i understand (your|the|your concern|the concern|that))\b/i,
   /\b(i('d| would) be happy to|allow me to|let me (explain|clarify|address|break|walk))\b/i,
@@ -42,6 +45,10 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
 
   // ── Filler transitions (extremely common in AI output) ────────────────────
   /\b(furthermore|moreover|additionally|consequently|nevertheless|nonetheless|notwithstanding|henceforth)\b/i,
+  /\bmore importantly\b/i,
+  /\bthat (means|suggests|implies) (that )?\b/i,
+  /\bfrom this perspective\b/i,
+  /\bin practical terms\b/i,
   /\b(in (addition|contrast|particular|this context|this regard|other words))[,\s]/i,
   /\b(as (a result|such|mentioned|stated|noted|discussed|outlined))[,\s]/i,
   /\bit's (also|worth) (noting|mentioning|highlighting) that\b/i,
@@ -58,7 +65,10 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
 
   // ── Helper/assistant phrases ───────────────────────────────────────────────
   /\bfeel free to (ask|reach out|contact|let me know)\b/i,
+  /\bif it helps[,:\s]/i,
+  /\bhere's why\b/i,
   /\bi hope (this (helps|clarifies|answers|is helpful)|that helps)\b/i,
+  /\bi hope this gives (you )?(clarity|context|a clearer picture)\b/i,
   /\b(please (don't hesitate|feel free)|let me know if (you (have|need)|there('s| is)))\b/i,
   /\bif you (have|need) (any|further|more|additional) (questions?|help|information|clarification)\b/i,
   /\b(happy to|glad to) (help|assist|answer|clarify|elaborate)\b/i,
@@ -72,6 +82,9 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
   /\b(keep in mind|bear in mind|it should be noted) that\b/i,
   /\b(generally speaking|broadly speaking|in most cases|in many cases|in some cases)\b/i,
   /\b(while (it('s| is) true|this (is|may be)|there are))\b/i,
+  /\bit depends on (the|your|several|a few)\b/i,
+  /\bthat said[,:\s]/i,
+  /\bto be fair[,:\s]/i,
   /\bthe (key|main|primary|core|central) (takeaway|message|point|difference|distinction|factor) (here |is )\b/i,
 
   // ── Blog/essay AI patterns ────────────────────────────────────────────────
@@ -88,10 +101,28 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
   // ── Twitter/social-media specific AI reply patterns ───────────────────────
   /\bthis (is|was) (a |an )?(great|important|interesting|excellent|valid|good) (point|observation|take|post|thread|discussion)\b/i,
   /\b(you('re| are) (absolutely|completely|totally|entirely) right)\b/i,
+  /\bthis is exactly (it|right|what)\b/i,
+  /\bexactly this\b/i,
+  /\bnailed it\b/i,
+  /\byou nailed (it|this|the point)\b/i,
+  /\bthis is such an important (point|reminder|thread|message)\b/i,
+  /\bappreciate you (sharing|posting|saying) this\b/i,
+  /\bthis needs to be said\b/i,
+  /\bthis is the kind of (nuance|take|discussion) we need\b/i,
   /\b(couldn't (agree|have said it) (more|better))\b/i,
   /\bspot on\b/i,
   /\bwell (said|put|articulated|stated|expressed)\b/i,
+  /\bvery well said\b/i,
+  /\bthis deserves more attention\b/i,
+  /\bmore people need to hear this\b/i,
+  /\bthis should be pinned\b/i,
+  /\bfor anyone wondering[,:\s]/i,
+  /\bfor those asking[,:\s]/i,
+  /\bquick breakdown[,:\s]/i,
   /\b100% (agree|correct|right|this|true)\b/i,
+  /\b100 percent (agree|correct|right|true)\b/i,
+  /\btotally agree (with this|here|on this|with you)\b/i,
+  /\bstrongly agree\b/i,
   /\b(this (resonates|aligns) with)\b/i,
   /\b(to (your|the) point about)\b/i,
   /\bbuilding on (this|that|your point|what you('ve| have) said)\b/i,
@@ -99,6 +130,12 @@ const AI_PHRASE_PATTERNS: RegExp[] = [
 
   // ── List/structure openers ────────────────────────────────────────────────
   /\bhere('s| is|are) (a few|some|the|an overview|a breakdown|a list|a summary|the key|the main)\b/i,
+  /\bhere are (a few|some|the main|the key|several) (things|points|reasons|ideas|factors)\b/i,
+  /\bin short[,:\s]/i,
+  /\blong story short[,:\s]/i,
+  /\bquick summary[,:\s]/i,
+  /\bbottom line[,:\s]/i,
+  /\bthe short answer is\b/i,
   /\b(there are (several|many|a few|multiple|various|key|main)) (ways?|reasons?|factors?|aspects?|benefits?|challenges?)\b/i,
   /\b(key (points?|aspects?|factors?|takeaways?|insights?|benefits?|features?|differences?)):?\s/i,
 ];
@@ -110,16 +147,22 @@ const HIGH_SIGNAL_PATTERNS: RegExp[] = [
   /\b(certainly|absolutely)\b/i,
   /\bas an ai\b/i,
   /\bgreat (question|point|observation)\b/i,
+  /\bthanks for (sharing|bringing this up)\b/i,
   /\bi hope this helps\b/i,
   /\bfeel free to\b/i,
   /\b(furthermore|moreover|additionally)\b/i,
   /\bin (conclusion|summary)\b/i,
   /\b(firstly|secondly|thirdly)[,:\s]/i,
+  /\bhere's why\b/i,
   /\b(comprehensive|holistic|leverag(e|ing))\b/i,
   /\bdon't hesitate to\b/i,
   /\b(delve|delving) into\b/i,
   /\bwell (said|put)\b/i,
+  /\bnailed it\b/i,
+  /\bexactly this\b/i,
+  /\bfor anyone wondering[,:\s]/i,
   /\b100% (agree|correct|right)\b/i,
+  /\btotally agree\b/i,
   /\bspot on\b/i,
 ];
 
@@ -186,16 +229,23 @@ function computeEntropyScore(text: string): number {
 
 /** Count how many AI phrase patterns match → higher = more AI-like */
 function computePhrasePatternsScore(text: string): number {
+  const countMatches = (pattern: RegExp): number => {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    const re = new RegExp(pattern.source, flags);
+    const matches = text.match(re);
+    return Math.min(2, matches?.length ?? 0); // cap repeats per pattern
+  };
+
   let score = 0;
   for (const pattern of AI_PHRASE_PATTERNS) {
-    if (pattern.test(text)) score += 1;
+    score += countMatches(pattern);
   }
   // High-signal patterns each count as 2
   for (const pattern of HIGH_SIGNAL_PATTERNS) {
-    if (pattern.test(text)) score += 1; // +1 extra on top of the +1 above
+    score += countMatches(pattern); // +1 extra on top of the base score
   }
-  // Normalize: weighted score of 4+ = max signal (threshold tuned for 80+ patterns)
-  return Math.min(1, score / 4);
+  // Normalize: score around 5 means strong AI phrase signal.
+  return Math.min(1, score / 5);
 }
 
 /** Average sentence length: very long uniform sentences → AI-like */
@@ -223,6 +273,14 @@ function computeListLikeScore(text: string): number {
     if (p.test(text)) matches++;
   }
   return Math.min(1, matches / 2);
+}
+
+/** Em-dash density: repeated em dashes are a common AI style artifact. */
+function computeEmDashSignal(text: string): number {
+  const emDashCount = (text.match(/—/g) ?? []).length;
+  if (emDashCount === 0) return 0;
+  // 2+ em dashes in one short reply is a strong signal.
+  return Math.min(1, emDashCount / 3);
 }
 
 // ─── Feature Extraction Entry Point ──────────────────────────────────────────
@@ -261,9 +319,19 @@ export function extractFeatures(text: string): HeuristicFeatures {
  * listLikeScore              +0.10    Structured lists → AI
  */
 export function scoreText(text: string): number {
-  if (text.trim().length < 20) return 1;
+  const trimmed = text.trim();
+  if (trimmed.length < 12) return 1;
 
-  const f = extractFeatures(text);
+  const f = extractFeatures(trimmed);
+  const emDashSignal = computeEmDashSignal(trimmed);
+  // Short social replies often carry mostly phrase signal.
+  if (trimmed.length < 30) {
+    const shortSignal = Math.max(f.phrasePatternsScore, emDashSignal);
+    if (shortSignal >= 0.65) return 8;
+    if (shortSignal >= 0.45) return 6;
+    if (shortSignal >= 0.25) return 4;
+    return 1;
+  }
 
   // Invert low-gives-AI features
   const invertedTTR = 1 - f.typeTokenRatio;       // low TTR = repetitive = AI
@@ -275,15 +343,30 @@ export function scoreText(text: string): number {
     ? Math.min(1, (f.avgSentenceLength - 10) / 20)
     : 0;
 
-  const rawScore =
-    invertedTTR * 0.15 +
+  const phraseBoost = f.phrasePatternsScore >= 0.6
+    ? 0.12
+    : f.phrasePatternsScore >= 0.4
+      ? 0.06
+      : 0;
+  const emDashBoost = emDashSignal >= 0.66
+    ? 0.12
+    : emDashSignal >= 0.33
+      ? 0.06
+      : 0;
+
+  const rawScore = Math.min(
+    1,
+    invertedTTR * 0.13 +
     f.repetitionScore * 0.10 +
-    invertedVariance * 0.15 +
-    invertedEntropy * 0.10 +
-    f.phrasePatternsScore * 0.30 +
+    invertedVariance * 0.12 +
+    invertedEntropy * 0.09 +
+    f.phrasePatternsScore * 0.38 +
     avgLenSignal * 0.05 +
-    f.punctuationDensity * 0.05 +
-    f.listLikeScore * 0.10;
+    f.punctuationDensity * 0.04 +
+    f.listLikeScore * 0.09 +
+    phraseBoost +
+    emDashBoost
+  );
 
   // Map raw [0–1] score to [1–10]
   const score = Math.round(1 + rawScore * 9);

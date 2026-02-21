@@ -68,6 +68,12 @@ export function isAccessAllowed(status: LicenseStatus): boolean {
   return status === 'trial' || status === 'active' || status === 'grace';
 }
 
+/** Remaining trial days based on canonical trial start timestamp (unix ms). */
+export function computeTrialDaysLeft(trialStart: number): number {
+  const elapsed = Date.now() - trialStart;
+  return Math.ceil(Math.max(0, TRIAL_MS - elapsed) / (24 * 60 * 60 * 1000));
+}
+
 /** Human-readable trial countdown string, e.g. "5 days left" */
 export function trialCountdown(state: LicenseState): string {
   const elapsed = Date.now() - (state.installDate ?? Date.now());

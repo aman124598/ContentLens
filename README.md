@@ -46,12 +46,28 @@ npm run dev          # watch mode
 
 ---
 
+## Access Model
+
+- Sign-in is required before any scoring/filtering runs.
+- Free trial lasts 7 days and starts on first successful sign-in.
+- After trial expiry, a valid paid license key is required.
+- When blocked (signed out or expired without license), content scanning/scoring is fully disabled.
+- User session persists across popup closes/reopens (until extension data is cleared or extension is removed).
+
+---
+
 ## Payments and License Activation (Dodo Payments)
 
-1. Create your product/payment link in Dodo Payments.
-2. Set your payment link in `src/shared/types.ts` (`DODO_PAYMENT_LINK`).
-3. Ensure Dodo sends the customer license key after purchase.
-4. User enters that key in the extension popup to activate access.
+Current checkout link (live):
+- `https://checkout.dodopayments.com/buy/pdt_0NYkwaaZugSG9iopGS3Qz?quantity=1`
+
+Current pricing:
+- `$9` one-time payment for lifetime access.
+
+Flow:
+1. User purchases via the checkout link.
+2. Dodo issues a license key.
+3. User enters key in popup to activate.
 
 License validation endpoint used by the extension:
 - `POST https://live.dodopayments.com/licenses/validate`
@@ -81,6 +97,7 @@ src/
     └── debounce.ts    # Debounce utility
 
 public/
+├── index.html         # Vercel landing page
 ├── manifest.json
 ├── popup.html
 ├── options.html
@@ -116,8 +133,27 @@ Scores text on a **1–10 scale**. Signals used:
 
 ---
 
+## Site Targeting
+
+- Default mode: runs on all sites except explicitly disabled domains.
+- Allowlist mode: runs only on explicitly enabled domains.
+- Domain matching supports subdomains (e.g. `example.com` applies to `www.example.com`).
+
+---
+
+## Vercel Deployment
+
+- `vercel.json` points build output to `dist/`.
+- Landing page is served from `public/index.html`.
+- Rewrites:
+  - `/popup` -> `/popup.html`
+  - `/options` -> `/options.html`
+
+---
+
 ## Privacy
 
-- 100% local scoring — no network requests
+- Local text scoring (no raw page text sent to servers)
 - No raw text stored — only hashes + scores
-- No identity or browsing data collected
+- Authentication/session metadata is stored for account access control
+- License verification requests are sent to Dodo Payments only for key validation

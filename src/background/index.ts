@@ -1,16 +1,16 @@
 // src/background/index.ts
 // Background service worker — handles scoring requests, settings management, caching
 
-import { ExtensionMessage, ExtensionSettings } from '../shared/types';
+import { AccessGate, ExtensionMessage, ExtensionSettings } from '../shared/types';
 import {
   loadSettings, saveSettings, getCachedScore, setCachedScore, getCacheSize, clearScoreCache
 } from '../shared/storage';
 import { scoreText } from '../scoring/heuristics';
 import {
   loadLicenseState, saveLicenseState, ensureInstallDate,
-  computeStatus, validateLicenseKey,
+  computeStatus, computeTrialDaysLeft, validateLicenseKey,
 } from '../shared/license';
-import { signUp, signIn, signOut, getSessionUser, fetchTrialRecord } from '../shared/auth';
+import { ensureTrialRecord, signUp, signIn, signOut, getSessionUser, fetchTrialRecord } from '../shared/auth';
 
 // ─── In-memory settings cache ─────────────────────────────────────────────────
 let cachedSettings: ExtensionSettings | null = null;
@@ -20,6 +20,65 @@ async function getSettings(): Promise<ExtensionSettings> {
     cachedSettings = await loadSettings();
   }
   return cachedSettings;
+}
+
+async function resolveAccessGate(): Promise<AccessGate> {
+  try {
+    const state = await loadLicenseState();
+    const user = await getSessionUser();
+    if (!user) {
+      return {
+        allowed: false,
+        status: 'expired',
+        reason: 'blocked_signed_out',
+        daysLeft: 0,
+        requiresAuth: true,
+      };
+    }
+
+    let trialRecord = await fetchTrialRecord();
+    if (!trialRecord) {
+      trialRecord = await ensureTrialRecord(user.id, user.email);
+    }
+
+    const status = computeStatus(state, trialRecord.trialStart);
+    if (status === 'active' || status === 'grace') {
+      return {
+        allowed: true,
+        status,
+        reason: 'ok_paid',
+        daysLeft: computeTrialDaysLeft(trialRecord.trialStart),
+        requiresAuth: false,
+      };
+    }
+
+    if (status === 'trial') {
+      return {
+        allowed: true,
+        status,
+        reason: 'ok_trial',
+        daysLeft: computeTrialDaysLeft(trialRecord.trialStart),
+        requiresAuth: false,
+      };
+    }
+
+    return {
+      allowed: false,
+      status: 'expired',
+      reason: 'blocked_trial_expired',
+      daysLeft: 0,
+      requiresAuth: false,
+    };
+  } catch (err) {
+    console.warn('[ContentLens BG] resolveAccessGate failed:', err);
+    return {
+      allowed: false,
+      status: 'expired',
+      reason: 'blocked_unknown',
+      daysLeft: 0,
+      requiresAuth: false,
+    };
+  }
 }
 
 // ─── Message Handler ──────────────────────────────────────────────────────────
@@ -38,6 +97,12 @@ async function handleMessage(
   try {
     switch (message.type) {
       case 'SCORE_TEXT': {
+        const gate = await resolveAccessGate();
+        if (!gate.allowed) {
+          sendResponse({ error: 'ACCESS_BLOCKED', gate });
+          return;
+        }
+
         const { hash, text } = message;
 
         // 1. Check persistent cache
@@ -91,10 +156,14 @@ async function handleMessage(
       // ── License messages ────────────────────────────────────────────────────────────
       case 'GET_LICENSE': {
         const state = await loadLicenseState();
-        // Fetch canonical trial start from Supabase (prevents multi-trial abuse)
-        const trialRecord = await fetchTrialRecord();
-        const status = computeStatus(state, trialRecord?.trialStart);
-        sendResponse({ state, status });
+        const gate = await resolveAccessGate();
+        sendResponse({ state, status: gate.status, gate });
+        break;
+      }
+
+      case 'GET_ACCESS_GATE': {
+        const gate = await resolveAccessGate();
+        sendResponse({ gate });
         break;
       }
 
@@ -110,6 +179,7 @@ async function handleMessage(
           // Use Supabase trial record so status is accurate
           const trialRec = await fetchTrialRecord();
           const status = computeStatus(state, trialRec?.trialStart);
+          broadcastToContentScripts({ type: 'RE_EVALUATE' });
           sendResponse({ ok: true, state, status });
         } else {
           sendResponse({ ok: false, error: result.error ?? 'Validation failed' });
@@ -126,6 +196,7 @@ async function handleMessage(
         await saveLicenseState(state);
         const trialRecord2 = await fetchTrialRecord();
         const status = computeStatus(state, trialRecord2?.trialStart);
+        broadcastToContentScripts({ type: 'RE_EVALUATE' });
         sendResponse({ ok: true, state, status });
         break;
       }
@@ -134,11 +205,12 @@ async function handleMessage(
       case 'AUTH_GET_SESSION': {
         const user = await getSessionUser();
         if (!user) { sendResponse({ session: null }); break; }
-        const trial = await fetchTrialRecord();
+        let trial = await fetchTrialRecord();
+        if (!trial) {
+          trial = await ensureTrialRecord(user.id, user.email);
+        }
         sendResponse({
-          session: trial
-            ? { userId: user.id, email: user.email, trialStart: trial.trialStart }
-            : null,
+          session: { userId: user.id, email: user.email, trialStart: trial.trialStart },
         });
         break;
       }
@@ -149,15 +221,7 @@ async function handleMessage(
           sendResponse({ ok: false, error: result.error });
           break;
         }
-        const trialRec = await fetchTrialRecord();
-        sendResponse({
-          ok: true,
-          session: {
-            userId: result.user.id,
-            email: result.user.email,
-            trialStart: trialRec?.trialStart ?? Date.now(),
-          },
-        });
+        sendResponse({ ok: true, session: null });
         break;
       }
 
@@ -176,11 +240,13 @@ async function handleMessage(
             trialStart: trialRec?.trialStart ?? Date.now(),
           },
         });
+        broadcastToContentScripts({ type: 'RE_EVALUATE' });
         break;
       }
 
       case 'AUTH_SIGN_OUT': {
         await signOut();
+        broadcastToContentScripts({ type: 'RE_EVALUATE' });
         sendResponse({ ok: true });
         break;
       }
@@ -215,10 +281,10 @@ async function broadcastToContentScripts(message: ExtensionMessage) {
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
-    // Seed defaults and record install date for trial tracking
+    // Seed defaults and record install metadata.
     const settings = await getSettings();
     await saveSettings(settings);
     await ensureInstallDate();
-    console.warn('[ContentLens] Extension installed — trial started.');
+    console.warn('[ContentLens] Extension installed.');
   }
 });

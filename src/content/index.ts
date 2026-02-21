@@ -1,10 +1,13 @@
 // src/content/index.ts
 // Content script entry point — bootstraps ContentLens on the page
 
-import { ExtensionSettings, ExtensionMessage, LicenseStatus, TRIAL_MS } from '../shared/types';
+import { AccessGate, ExtensionMessage, ExtensionSettings } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/types';
 import { scanDOM, extractBlock, setMinTextLength, REPLY_SELECTORS } from './domScanner';
-import { applyFilter, removeFilter, injectBadge, reapplyMode, injectStyles, clearAllFilters, clearEverything, showPaywallBanner, removePaywallBanner } from './domModifier';
+import {
+  applyFilter, removeFilter, injectBadge, reapplyMode, injectStyles,
+  clearEverything, showPaywallBanner, removePaywallBanner, showAccessBlockedBanner,
+} from './domModifier';
 import { getCached, setCache } from './cache';
 import { debounce } from '../utils/debounce';
 
@@ -14,7 +17,9 @@ let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
 let observer: MutationObserver | null = null;
 let initialized = false;
 let lastUrl = location.href;
-let licenseStatus: LicenseStatus = 'trial'; // optimistic default
+let accessGate: AccessGate | null = null;
+let navIntervalId: number | null = null;
+let sweepIntervalId: number | null = null;
 
 /** Map from DOM element → its last known score (for re-evaluation) */
 const elementScores = new Map<Element, number>();
@@ -32,41 +37,19 @@ async function init() {
   if (initialized) return;
   initialized = true;
 
-  // Load settings from background
   settings = await fetchSettings();
   setMinTextLength(settings.minTextLength);
 
   if (!settings.enabled) return;
 
-  // Check domain rules
-  const hostname = window.location.hostname;
-  const domainRule = settings.domainRules[hostname];
-  if (settings.siteAllowlistMode) {
-    // Opt-in mode: only run on sites explicitly enabled
-    if (domainRule !== 'enabled') return;
-  } else {
-    // Default opt-out mode: run everywhere except disabled sites
-    if (domainRule === 'disabled') return;
-  }
+  if (!isCurrentSiteEligible()) return;
 
   injectStyles();
 
-  // ── License / trial gate ──────────────────────────────────────────────────
-  const { status: ls, daysLeft } = await fetchLicenseInfo();
-  licenseStatus = ls;
-  if (licenseStatus === 'expired') {
-    showPaywallBanner(0);
-    return; // don't start scanning
-  }
-  if (licenseStatus === 'trial') {
-    showPaywallBanner(daysLeft);
-  }
-  if (licenseStatus === 'active' || licenseStatus === 'grace') {
-    removePaywallBanner();
-  }
+  const gate = await fetchAccessGate();
+  if (!applyAccessGate(gate)) return;
 
-  // Twitter/X is a SPA — content loads after DOMContentLoaded.
-  // Delay initial scan slightly to let the first batch of tweets render.
+  const hostname = window.location.hostname;
   const isTwitter = /^(twitter|x)\.com$/.test(hostname);
   if (isTwitter) {
     setTimeout(() => runInitialScan(), 1500);
@@ -77,7 +60,7 @@ async function init() {
   startObserver();
 }
 
-// ─── Settings ─────────────────────────────────────────────────────────────────
+// ─── Settings / Access Gate ──────────────────────────────────────────────────
 
 function fetchSettings(): Promise<ExtensionSettings> {
   return new Promise((resolve) => {
@@ -91,45 +74,73 @@ function fetchSettings(): Promise<ExtensionSettings> {
   });
 }
 
-/** Single round-trip: fetch license status + compute trial days remaining */
-function fetchLicenseInfo(): Promise<{ status: LicenseStatus; daysLeft: number }> {
+function fetchAccessGate(): Promise<AccessGate> {
   return new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: 'GET_LICENSE' } as ExtensionMessage, (response) => {
-      if (chrome.runtime.lastError || !response) {
-        chrome.storage.local.get('cl_install_date', (r) => {
-          const installDate = (r['cl_install_date'] as number | undefined) ?? 0;
-          const elapsed = Date.now() - installDate;
-          const daysLeft = Math.ceil(Math.max(0, TRIAL_MS - elapsed) / 86400000);
-          resolve({ status: elapsed < TRIAL_MS ? 'trial' : 'expired', daysLeft });
+    chrome.runtime.sendMessage({ type: 'GET_ACCESS_GATE' } as ExtensionMessage, (response) => {
+      if (chrome.runtime.lastError || !response?.gate) {
+        resolve({
+          allowed: false,
+          status: 'expired',
+          reason: 'blocked_unknown',
+          daysLeft: 0,
+          requiresAuth: false,
         });
         return;
       }
-      const res = response as { status: LicenseStatus; state?: { installDate?: number } };
-      const status = res.status ?? 'expired';
-      const installDate = res.state?.installDate ?? Date.now();
-      const daysLeft = Math.ceil(Math.max(0, TRIAL_MS - (Date.now() - installDate)) / 86400000);
-      resolve({ status, daysLeft });
+      resolve((response as { gate: AccessGate }).gate);
     });
   });
 }
 
-/** Lightweight status-only check used by RE_EVALUATE and SPA nav */
-function fetchLicenseStatus(): Promise<LicenseStatus> {
-  return fetchLicenseInfo().then((r) => r.status);
+function applyAccessGate(gate: AccessGate): boolean {
+  accessGate = gate;
+
+  removePaywallBanner();
+  if (!gate.allowed) {
+    clearRuntimeState(true);
+    if (gate.reason === 'blocked_signed_out') {
+      showAccessBlockedBanner('blocked_signed_out', gate.daysLeft);
+    } else if (gate.reason === 'blocked_trial_expired') {
+      showAccessBlockedBanner('blocked_trial_expired', 0);
+    } else {
+      showAccessBlockedBanner('blocked_unknown', 0);
+    }
+    return false;
+  }
+
+  if (gate.reason === 'ok_trial') {
+    showPaywallBanner(gate.daysLeft);
+  }
+
+  return true;
+}
+
+async function reevaluateAccessAndRescan() {
+  if (!isCurrentSiteEligible()) {
+    removePaywallBanner();
+    clearRuntimeState(true);
+    return;
+  }
+  const gate = await fetchAccessGate();
+  if (!applyAccessGate(gate)) return;
+  clearRuntimeState(false);
+  await runInitialScan();
+  if (!observer) startObserver();
 }
 
 // ─── Initial DOM Scan ─────────────────────────────────────────────────────────
 
 async function runInitialScan() {
+  if (!accessGate?.allowed || !settings.enabled || !isCurrentSiteEligible()) return;
   const blocks = scanDOM(document);
-  // Score all blocks in parallel — much faster than sequential await
   await Promise.all(blocks.map((b) => scoreAndApply(b.element, b.hash, b.text)));
 }
 
 // ─── Scoring & Applying ───────────────────────────────────────────────────────
 
 async function scoreAndApply(el: Element, hash: string, text: string): Promise<void> {
-  // 1. Check in-memory cache
+  if (!accessGate?.allowed || !isCurrentSiteEligible()) return;
+
   const cached = getCached(hash);
   if (cached !== null) {
     elementScores.set(el, cached);
@@ -137,21 +148,38 @@ async function scoreAndApply(el: Element, hash: string, text: string): Promise<v
     return;
   }
 
-  // 2. Ask background to score (which uses persistent cache + heuristics)
   const score = await requestScore(hash, text);
+  if (score === null) return;
+
   setCache(hash, score);
   elementScores.set(el, score);
   scoredHashes.add(hash);
   evaluateAndApply(el, score);
 }
 
-function requestScore(hash: string, text: string): Promise<number> {
+function requestScore(hash: string, text: string): Promise<number | null> {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(
       { type: 'SCORE_TEXT', hash, text } as ExtensionMessage,
       (response) => {
         if (chrome.runtime.lastError || !response) {
-          resolve(1); // fail silently
+          resolve(1);
+          return;
+        }
+        const blocked = response as { error?: string; gate?: AccessGate };
+        if (blocked.error === 'ACCESS_BLOCKED') {
+          if (blocked.gate) {
+            applyAccessGate(blocked.gate);
+          } else {
+            applyAccessGate({
+              allowed: false,
+              status: 'expired',
+              reason: 'blocked_unknown',
+              daysLeft: 0,
+              requiresAuth: false,
+            });
+          }
+          resolve(null);
           return;
         }
         resolve((response as { score: number }).score ?? 1);
@@ -161,13 +189,10 @@ function requestScore(hash: string, text: string): Promise<number> {
 }
 
 function evaluateAndApply(el: Element, score: number) {
-  if (!settings.enabled) return;
+  if (!settings.enabled || !accessGate?.allowed || !isCurrentSiteEligible()) return;
   if (!document.contains(el)) return;
 
-  // Always show score badge on every analyzed block
   injectBadge(el, score);
-
-  // Additionally apply filter mode only when score meets threshold
   if (score >= settings.threshold) {
     applyFilter(el, score, settings.mode);
   } else {
@@ -178,47 +203,30 @@ function evaluateAndApply(el: Element, score: number) {
 // ─── MutationObserver ─────────────────────────────────────────────────────────
 
 function startObserver() {
+  stopObserver();
   observer = new MutationObserver(handleMutations);
   observer.observe(document.body, {
     childList: true,
     subtree: true,
-    // Watch for text content changes inside existing tweet elements
-    // (Twitter recycles DOM nodes during virtual scroll)
     characterData: true,
     characterDataOldValue: false,
   });
 
-  // SPA navigation detection — Twitter/X changes URL without a page reload.
-  const navInterval = setInterval(() => {
-    if (!settings.enabled) { clearInterval(navInterval); return; }
+  navIntervalId = window.setInterval(() => {
+    if (!settings.enabled || !accessGate?.allowed || !isCurrentSiteEligible()) return;
     if (location.href !== lastUrl) {
       lastUrl = location.href;
-      setTimeout(async () => {
-        // Re-verify license on every SPA navigation — trial may have just expired
-        licenseStatus = await fetchLicenseStatus();
-        if (licenseStatus === 'expired') {
-          clearEverything();
-          stopObserver();
-          showPaywallBanner(0);
-          clearInterval(navInterval);
-          return;
-        }
-        elementScores.clear();
-        scoredHashes.clear();
-        pendingQueue.clear();
-        clearEverything();
-        await runInitialScan();
+      setTimeout(() => {
+        reevaluateAccessAndRescan();
       }, 1200);
     }
   }, 800);
 
-  // Periodic sweep: catch any tweets that scrolled in but were missed.
-  // Twitter’s virtual list sometimes mutates text without firing childList.
   const hostname = window.location.hostname;
   const isTwitter = /^(twitter|x)\.com$/.test(hostname);
   if (isTwitter) {
-    setInterval(() => {
-      if (!settings.enabled) return;
+    sweepIntervalId = window.setInterval(() => {
+      if (!settings.enabled || !accessGate?.allowed || !isCurrentSiteEligible()) return;
       sweepVisibleTweets();
     }, 1200);
   }
@@ -227,6 +235,23 @@ function startObserver() {
 function stopObserver() {
   observer?.disconnect();
   observer = null;
+  if (navIntervalId !== null) {
+    clearInterval(navIntervalId);
+    navIntervalId = null;
+  }
+  if (sweepIntervalId !== null) {
+    clearInterval(sweepIntervalId);
+    sweepIntervalId = null;
+  }
+}
+
+function clearRuntimeState(stopWatching: boolean) {
+  elementScores.clear();
+  scoredHashes.clear();
+  pendingQueue.clear();
+  processingQueue = false;
+  clearEverything();
+  if (stopWatching) stopObserver();
 }
 
 /**
@@ -241,14 +266,14 @@ function sweepVisibleTweets() {
       }
     });
     if (pendingQueue.size > 0) processQueue();
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
 }
 
-// Reduce debounce to 80ms — Twitter adds tweets very fast during scroll
 const handleMutations = debounce((_mutations: MutationRecord[]) => {
-  // On Twitter: just sweep all visible tweetText elements.
-  // Much more reliable than trying to track individual mutation nodes,
-  // because Twitter recycles DOM nodes and batches many mutations at once.
+  if (!accessGate?.allowed || !settings.enabled || !isCurrentSiteEligible()) return;
+
   const hostname = window.location.hostname;
   const isTwitterLike = /^(twitter|x)\.com$/.test(hostname) ||
     hostname === 'linkedin.com' || hostname === 'www.linkedin.com';
@@ -258,7 +283,6 @@ const handleMutations = debounce((_mutations: MutationRecord[]) => {
     return;
   }
 
-  // Non-SPA: process added nodes normally
   const newElements: Element[] = [];
   for (const mutation of _mutations) {
     for (const node of mutation.addedNodes) {
@@ -275,21 +299,28 @@ function collectCandidates(root: Element, out: Element[]) {
 
   try {
     if (root.matches(REPLY_SELECTORS) && !set.has(root)) out.push(root);
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
 
   try {
     root.querySelectorAll(REPLY_SELECTORS).forEach((child) => {
-      if (!set.has(child)) { out.push(child); set.add(child); }
+      if (!set.has(child)) {
+        out.push(child);
+        set.add(child);
+      }
     });
-  } catch { /* ignore */ }
+  } catch {
+    // ignore
+  }
 }
 
 async function processQueue() {
-  if (processingQueue) return;
+  if (processingQueue || !accessGate?.allowed || !isCurrentSiteEligible()) return;
   processingQueue = true;
 
   while (pendingQueue.size > 0) {
-    // Drain current batch — score all of them in parallel
+    if (!accessGate?.allowed || !isCurrentSiteEligible()) break;
     const batch = Array.from(pendingQueue);
     pendingQueue.clear();
 
@@ -316,59 +347,55 @@ chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendRe
     setMinTextLength(settings.minTextLength);
 
     if (!settings.enabled) {
-      clearEverything();
-      stopObserver();
+      clearRuntimeState(true);
+      sendResponse({ ok: true });
+      return true;
+    }
+
+    if (!isCurrentSiteEligible()) {
+      clearRuntimeState(true);
       sendResponse({ ok: true });
       return true;
     }
 
     if (!prev.enabled && settings.enabled) {
-      // Re-scan from scratch
-      elementScores.clear();
-      scoredHashes.clear();
-      pendingQueue.clear();
       injectStyles();
-      runInitialScan().then(() => startObserver());
-      sendResponse({ ok: true });
+      reevaluateAccessAndRescan().then(() => sendResponse({ ok: true }));
       return true;
     }
 
-    // Threshold or mode changed → re-evaluate existing scored elements
     reapplyMode(elementScores, settings.threshold, settings.mode);
-
-    // If domain rule changed check current domain
-    const hostname = window.location.hostname;
-    const _rule = settings.domainRules[hostname];
-    const _blocked = settings.siteAllowlistMode ? _rule !== 'enabled' : _rule === 'disabled';
-    if (_blocked) {
-      clearAllFilters();
-      stopObserver();
-    }
+    if (!observer) startObserver();
 
     sendResponse({ ok: true });
     return true;
   }
 
   if (message.type === 'RE_EVALUATE') {
-    // Re-check license before allowing a fresh scan
-    fetchLicenseStatus().then((status) => {
-      licenseStatus = status;
-      if (licenseStatus === 'expired') {
-        clearEverything();
-        stopObserver();
-        showPaywallBanner(0);
-        return;
-      }
-      elementScores.clear();
-      scoredHashes.clear();
-      pendingQueue.clear();
-      clearEverything();
-      runInitialScan();
-    });
-    sendResponse({ ok: true });
+    reevaluateAccessAndRescan().then(() => sendResponse({ ok: true }));
     return true;
   }
 });
+
+function hostMatchesRule(hostname: string, ruleHost: string): boolean {
+  return hostname === ruleHost || hostname.endsWith(`.${ruleHost}`);
+}
+
+function isCurrentSiteEligible(): boolean {
+  const hostname = window.location.hostname.toLowerCase();
+  const domainRules = settings.domainRules ?? {};
+
+  if (settings.siteAllowlistMode) {
+    return Object.entries(domainRules).some(
+      ([ruleHost, rule]) => rule === 'enabled' && hostMatchesRule(hostname, ruleHost.toLowerCase())
+    );
+  }
+
+  const isDisabled = Object.entries(domainRules).some(
+    ([ruleHost, rule]) => rule === 'disabled' && hostMatchesRule(hostname, ruleHost.toLowerCase())
+  );
+  return !isDisabled;
+}
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
 

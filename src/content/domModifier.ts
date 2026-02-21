@@ -1,7 +1,7 @@
 // src/content/domModifier.ts
 // Apply/remove visual modifications on DOM elements based on score and mode.
 
-import { FilterMode, DODO_PAYMENT_LINK } from '../shared/types';
+import { AccessReason, FilterMode, DODO_PAYMENT_LINK } from '../shared/types';
 
 const ATTR_SCORE = 'data-cl-score';
 const ATTR_MODE = 'data-cl-mode';
@@ -322,13 +322,54 @@ export function showPaywallBanner(daysLeft: number) {
     </style>
     <span class="cl-pw-msg">🔍 ${msg}</span>
     <a class="cl-pw-cta" href="${DODO_PAYMENT_LINK}" target="_blank" rel="noopener">
-      ${isExpired ? 'Unlock Lifetime — $5' : 'Upgrade — $5 Lifetime'}
+      ${isExpired ? 'Unlock Lifetime — $9' : 'Upgrade — $9 Lifetime'}
     </a>
     <button class="cl-pw-close" title="Dismiss for now">✕</button>
   `;
 
   banner.querySelector('.cl-pw-close')?.addEventListener('click', () => banner.remove());
   document.body.appendChild(banner);
+}
+
+export function showAccessBlockedBanner(reason: AccessReason, daysLeft = 0) {
+  if (reason === 'blocked_signed_out') {
+    if (document.getElementById(PAYWALL_ID)) return;
+    const banner = document.createElement('div');
+    banner.id = PAYWALL_ID;
+    banner.innerHTML = `
+      <style>
+        #cl-paywall-banner {
+          position: fixed !important;
+          bottom: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 2147483646 !important;
+          background: #1e1b4b !important;
+          color: #e0e7ff !important;
+          font-family: system-ui, -apple-system, sans-serif !important;
+          font-size: 13px !important;
+          padding: 10px 20px !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 16px !important;
+          box-shadow: 0 -2px 12px rgba(0,0,0,0.35) !important;
+          border-top: 1px solid rgba(99,102,241,0.4) !important;
+        }
+        #cl-paywall-banner .cl-pw-msg {
+          flex: 1 !important;
+          text-align: center !important;
+          line-height: 1.4 !important;
+        }
+      </style>
+      <span class="cl-pw-msg">🔒 Sign in to start using ContentLens.</span>
+    `;
+    document.body.appendChild(banner);
+    return;
+  }
+
+  // Trial expired and unknown states fall back to paywall-style messaging.
+  showPaywallBanner(daysLeft);
 }
 
 export function removePaywallBanner() {

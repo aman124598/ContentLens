@@ -79,7 +79,7 @@ export const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
 export const LICENSE_STORAGE_KEY = 'cl_license';
 
 /** Dodo Payments checkout/payment link — replace with your actual payment link URL */
-export const DODO_PAYMENT_LINK = 'https://checkout.dodopayments.com/buy/YOUR_PAYMENT_LINK_ID';
+export const DODO_PAYMENT_LINK = 'https://checkout.dodopayments.com/buy/pdt_0NYkwaaZugSG9iopGS3Qz?quantity=1';
 
 /** Computed access status derived from LicenseState */
 export type LicenseStatus =
@@ -87,6 +87,21 @@ export type LicenseStatus =
   | 'active'       // paid & validated
   | 'expired'      // trial over, no valid license
   | 'grace';       // validation failed but within 24h grace (offline tolerance)
+
+export type AccessReason =
+  | 'ok_trial'
+  | 'ok_paid'
+  | 'blocked_signed_out'
+  | 'blocked_trial_expired'
+  | 'blocked_unknown';
+
+export interface AccessGate {
+  allowed: boolean;
+  status: LicenseStatus;
+  reason: AccessReason;
+  daysLeft: number;
+  requiresAuth: boolean;
+}
 
 /** Auth state stored in chrome.storage.local */
 export interface AuthSession {
@@ -109,8 +124,10 @@ export type ExtensionMessage =
   | { type: 'CACHE_STATS_RESPONSE'; count: number }
   | { type: 'CLEAR_CACHE' }
   | { type: 'GET_LICENSE' }
+  | { type: 'GET_ACCESS_GATE' }
   | { type: 'ACTIVATE_LICENSE'; key: string }
   | { type: 'LICENSE_STATE'; state: LicenseState; status: LicenseStatus }
+  | { type: 'ACCESS_GATE_RESPONSE'; gate: AccessGate }
   | { type: 'DEACTIVATE_LICENSE' }
   // ── Auth messages ──────────────────────────────────────────────────────
   | { type: 'AUTH_SIGN_UP'; email: string; password: string }
