@@ -21,6 +21,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.96.0",
     "@types/lodash-es": "^4.17.12",
+    "@vercel/analytics": "^1.4.1",
     "lodash-es": "^4.17.21"
   }
 }
